@@ -1,0 +1,21 @@
+{
+  // Markdown lint configuration for the Smart Street Light V1 engineering
+  // documentation set. Line length is not enforced because engineering
+  // documents contain long table rows and technical prose.
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules"],
+  "config": {
+    "MD013": false,
+    "MD033": false,
+    "MD024": {
+      "siblings_only": true
+    },
+    "MD025": true,
+    "MD046": {
+      "style": "consistent"
+    },
+    "MD029": {
+      "style": "ordered"
+    }
+  }
+}
