@@ -35,7 +35,7 @@ MASTER_ADDRESS = 0x00
 #: Start-of-frame delimiter.
 SOF = 0xA5
 #: Protocol version implemented by this layer.
-PROTOCOL_VERSION = 0x01
+PROTOCOL_VERSION = 0x02
 #: Maximum payload length accepted by the frame layer.
 MAX_PAYLOAD_LENGTH = 0xFFFF
 
@@ -121,6 +121,8 @@ def decode_frame(data: bytes) -> Frame:
         raise ProtocolError("bad start-of-frame byte 0x%02X" % data[0])
 
     protocol_version = data[1]
+    if protocol_version != PROTOCOL_VERSION:
+        raise ProtocolError("unsupported protocol version %d" % protocol_version)
     source = data[2]
     destination = data[3]
     message_code = data[4]

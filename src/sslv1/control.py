@@ -23,7 +23,7 @@ by default.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from .configuration import LampConfiguration
@@ -76,20 +76,15 @@ class ControlModel:
 
     config: LampConfiguration
     protection: ProtectionState = field(default_factory=ProtectionState)
-    _configured_mode: Optional[ConfiguredMode] = None
     _active_override: OverrideState = OverrideState.NONE
     _lamp_is_on: bool = False
-
-    def __post_init__(self) -> None:
-        if self._configured_mode is None:
-            self._configured_mode = self.config.configured_mode
 
     # ------------------------------------------------------------------
     # State accessors
     # ------------------------------------------------------------------
     @property
     def configured_mode(self) -> ConfiguredMode:
-        return self._configured_mode
+        return self.config.configured_mode
 
     @property
     def active_override(self) -> OverrideState:
@@ -102,7 +97,7 @@ class ControlModel:
             return OperatingMode.FORCE_ON
         if self._active_override is OverrideState.FORCE_OFF:
             return OperatingMode.FORCE_OFF
-        return _AUTOMATIC_TO_OPERATING[self._configured_mode]
+        return _AUTOMATIC_TO_OPERATING[self.config.configured_mode]
 
     @property
     def lamp_is_on(self) -> bool:
@@ -115,7 +110,7 @@ class ControlModel:
         """Set the persistent automatic operating mode."""
         if not isinstance(mode, ConfiguredMode):
             raise ValidationError("configured mode must be a ConfiguredMode")
-        self._configured_mode = mode
+        self.config = replace(self.config, configured_mode=mode)
 
     def apply_override(self, override: OverrideState) -> None:
         """Apply (or clear) a forced override.
@@ -151,6 +146,11 @@ class ControlModel:
     # ------------------------------------------------------------------
     def decide(self, light_level: Optional[float], ticks: int) -> ControlDecision:
         """Resolve the commanded lamp state for the current tick."""
+        from math import isfinite
+        if light_level is not None and (type(light_level) not in (int, float)
+                or not isfinite(light_level)
+                or not self.config.light_level_min <= light_level <= self.config.light_level_max):
+            light_level = None
         # 1. safety / hardware protection
         if self.protection.active:
             self._lamp_is_on = self.protection.forced_state is LampState.ON
@@ -183,7 +183,7 @@ class ControlModel:
             )
 
         # 3./4. configured automatic mode, delegating to sensor/schedule logic
-        mode = self._configured_mode
+        mode = self.config.configured_mode
         if mode is ConfiguredMode.FIXED_SCHEDULE:
             requested = self.config.schedule.is_on(ticks)
             self._lamp_is_on = requested
@@ -239,10 +239,10 @@ class ControlModel:
             # No valid light reading: retain the previous state rather than
             # guessing. Sensor validity is handled by diagnostics.
             return LampState.ON if self._lamp_is_on else LampState.OFF
-        if light_level <= self.config.light_on_threshold:
+        if light_level <= (self.config.light_on_threshold - self.config.light_hysteresis / 2):
             self._lamp_is_on = True
             return LampState.ON
-        if light_level >= self.config.light_off_threshold:
+        if light_level >= (self.config.light_off_threshold + self.config.light_hysteresis / 2):
             self._lamp_is_on = False
             return LampState.OFF
         return LampState.ON if self._lamp_is_on else LampState.OFF
@@ -250,20 +250,20 @@ class ControlModel:
     def _sensor_reason(self, light_level: Optional[float]) -> str:
         if light_level is None:
             return "no valid light level; retaining previous state"
-        if light_level <= self.config.light_on_threshold:
+        if light_level <= (self.config.light_on_threshold - self.config.light_hysteresis / 2):
             return "light level %s <= on threshold %s" % (
                 light_level,
-                self.config.light_on_threshold,
+                (self.config.light_on_threshold - self.config.light_hysteresis / 2),
             )
-        if light_level >= self.config.light_off_threshold:
+        if light_level >= (self.config.light_off_threshold + self.config.light_hysteresis / 2):
             return "light level %s >= off threshold %s" % (
                 light_level,
-                self.config.light_off_threshold,
+                (self.config.light_off_threshold + self.config.light_hysteresis / 2),
             )
         return "light level %s inside dead band [%s, %s); retaining state" % (
             light_level,
-            self.config.light_on_threshold,
-            self.config.light_off_threshold,
+            (self.config.light_on_threshold - self.config.light_hysteresis / 2),
+            (self.config.light_off_threshold + self.config.light_hysteresis / 2),
         )
 
 

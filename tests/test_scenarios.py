@@ -155,6 +155,8 @@ def test_scenario_07_force_on(lamp_node, operator):
     """Scenario: FORCE_ON turns the lamp on regardless of the automatic mode."""
     lamp_node.step(healthy_sources(light_level=900.0), ticks=1000)
     record = lamp_node.force_on(operator, ticks=2000)
+    assert record.state is CommandState.ACKNOWLEDGED
+    lamp_node.step(healthy_sources(), ticks=3000)
     assert record.state is CommandState.ACTUAL_STATE_VERIFIED
     assert lamp_node.control.lamp_is_on is True
     assert lamp_node.control.effective_mode is OperatingMode.FORCE_ON
@@ -165,6 +167,8 @@ def test_scenario_08_force_off(lamp_node, operator):
     """Scenario: FORCE_OFF turns the lamp off regardless of the automatic mode."""
     lamp_node.step(healthy_sources(light_level=10.0), ticks=1000)
     record = lamp_node.force_off(operator, ticks=2000)
+    assert record.state is CommandState.ACKNOWLEDGED
+    lamp_node.step(healthy_sources(current=0, power=0, switching_feedback=LampState.OFF), ticks=3000)
     assert record.state is CommandState.ACTUAL_STATE_VERIFIED
     assert lamp_node.control.lamp_is_on is False
     assert lamp_node.control.effective_mode is OperatingMode.FORCE_OFF
@@ -225,11 +229,13 @@ def test_scenario_12_fault_acknowledgement_is_not_a_lighting_input(lamp_node, op
 def test_scenario_13_command_lifecycle_reaches_verification(lamp_node, operator):
     """Scenario: the command lifecycle reaches ACTUAL_STATE_VERIFIED."""
     record = lamp_node.force_on(operator, ticks=1000)
+    assert record.state is CommandState.ACKNOWLEDGED
+    lamp_node.step(healthy_sources(), ticks=2000)
     assert record.state is CommandState.ACTUAL_STATE_VERIFIED
     assert record.received_ticks == 1000
     assert record.executed_ticks == 1000
     assert record.acknowledged_ticks == 1000
-    assert record.verified_ticks == 1000
+    assert record.verified_ticks == 2000
     assert record.succeeded is True
 
 
@@ -345,7 +351,7 @@ def test_scenario_20_supply_failure(lamp_node):
 def test_scenario_21_light_sensor_failure(lamp_node):
     """Scenario: an invalid light sensor is reported, not guessed around."""
     for index in range(5):
-        lamp_node.step(healthy_sources(sensor_status=SENSOR_INVALID()), ticks=1000 * (index + 1))
+        lamp_node.step(healthy_sources(sensor_status=SENSOR_INVALID(), current=0, power=0, switching_feedback=LampState.OFF), ticks=1000 * (index + 1))
     classifications = {
         f.diagnostic_classification for f in lamp_node.faults.active_faults
     }
@@ -633,6 +639,7 @@ def test_scenario_38_communication_retry_then_degraded(group_controller, clock, 
 
     bus.set_silent(1)
     for _ in range(5):
+        clock.advance(group_controller.config.poll_timeout_ticks)
         group_controller.poll()
         for node in nodes:
             for frame in node.process_incoming():
@@ -658,6 +665,7 @@ def test_scenario_39_communication_recovery(group_controller, clock, bus, author
 
     bus.set_silent(1)
     for _ in range(5):
+        clock.advance(group_controller.config.poll_timeout_ticks)
         group_controller.poll()
         for frame in node.process_incoming():
             group_controller.bus.send(frame)
@@ -666,6 +674,7 @@ def test_scenario_39_communication_recovery(group_controller, clock, bus, author
 
     bus.set_silent(1, silent=False)
     for _ in range(3):
+        clock.advance(group_controller.config.poll_timeout_ticks)
         group_controller.poll()
         for frame in node.process_incoming():
             group_controller.bus.send(frame)
@@ -684,8 +693,8 @@ def test_scenario_40_time_synchronization(group_controller, clock, bus, authoriz
     node.start()
     group_controller.register_node(node.lamp_id, node.bus_address)
 
-    results = group_controller.synchronize_time(master_ticks=77_000)
-    assert results == {1: True}
+    results = group_controller.synchronize_time(master_ticks=77_000, actor=Actor("time-admin", Role.ADMIN))
+    assert results == {1: False}
     node.process_incoming()
     assert node.time.sync_state is TimeSyncState.SYNCHRONIZED
     assert node.time.ticks == 77_000
@@ -824,7 +833,10 @@ def test_scenario_48_duplicate_registration_is_rejected(group_controller):
 # ==========================================================================
 def test_scenario_49_important_transitions_generate_events(lamp_node, operator):
     """Scenario: important transitions produce audit events."""
-    lamp_node.force_on(operator, ticks=1000)
+    record = lamp_node.force_on(operator, ticks=1000)
+    assert not record.succeeded
+    lamp_node.step(healthy_sources(), ticks=1500)
+    assert record.succeeded
     for index in range(5):
         lamp_node.step(
             healthy_sources(current=0.0, power=0.0, switching_feedback=LampState.ON),

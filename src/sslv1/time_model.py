@@ -128,7 +128,8 @@ class TimeModel:
             raise ValidationError("master_ticks must be non-negative")
         if self.clock.ticks < master_ticks:
             self.clock.advance(master_ticks - self.clock.ticks)
-        self.sync_state = TimeSyncState.SYNCHRONIZED
+        self.sync_state = (TimeSyncState.SYNCHRONIZED if self.clock.ticks == master_ticks
+                           else TimeSyncState.UNCERTAIN)
         self.last_sync_ticks = self.clock.ticks
         return self.now()
 
