@@ -435,3 +435,21 @@ The detailed permission matrix is a later security/design task.
 - [05_communication_architecture.md](05_communication_architecture.md)
 - [06_storage_and_logging.md](06_storage_and_logging.md)
 - [07_configuration.md](07_configuration.md)
+
+## Corrective data-model clarifications
+
+CommandRecord now exposes pending lifecycle, transmitted/received/executed/
+acknowledged/verified timestamps and validated response evidence. RECEIVED in
+the GC means accepted at the controller; remote execution remains unproven
+until matched node evidence arrives. Repeated identical command IDs return the
+same record without execution; conflicting reuse is rejected and audited.
+
+Fault has retained confirmation evidence, latest_evidence, previous_fault_id
+for recurrence, and a notification_reason independent of confirmation_reason.
+Structured Event.actor is propagated by command, configuration, fault and
+deletion paths and by event reporting. Time validity and unavailable measurement
+values survive the bus rather than becoming synchronized zero-valued readings.
+
+Wire protocol version 2 adds correlation, actor assertions and verification/
+readback metadata within the existing message set; see
+[05_communication_architecture.md](05_communication_architecture.md).

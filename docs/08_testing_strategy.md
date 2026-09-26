@@ -228,3 +228,22 @@ logic only**. This is stated explicitly in the traceability record.
 - [requirements_traceability.md](requirements_traceability.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+
+## Post-merge corrective regression evidence
+
+Run `python -m pytest -ra` from an environment installed with `.[dev]`.
+The full suite includes the unchanged baseline scenarios plus corrected
+asynchronous expectations and `tests/test_post_merge.py`. Tests exercise real
+node/controller bus pumps, not only codec round trips: no traffic for denied
+control/configuration/time actions; asserted-role separation; pending execution;
+fresh actual evidence; mismatched/late ACKs; command timeout/idempotency;
+malformed-payload retransmission; bounded full-cycle sequence reuse; genuine
+deadlines/retries; recovery; versioned readback; fault/notification integration;
+retention, corruption and authorized deletion; and loss/retry of historical
+measurement and event reports.
+
+Old tests that equated delivery with response, or a commanded bit with actual
+verification, now assert waiting first, supply observations/advance logical time,
+and retain strong final-success assertions. No existing test was deleted.
+The existing logical/full-suite baseline is not proof of electrical properties.
+Final test/static results and audit findings are in IMPLEMENTATION_REPORT.md.

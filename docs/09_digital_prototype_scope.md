@@ -145,16 +145,12 @@ requirements, architecture or design.
 
 ## 9. Explicit non-goals for the current phase
 
-The current phase (Phase 0) produces **documentation only**:
-
-- no simulation source code,
-- no test code,
-- no build system, packaging or dependency configuration,
-- no hardware design files.
-
-The only non-documentation file added is a Markdown lint configuration
-(`.markdownlint-cli2.jsonc`), which exists solely to validate the formatting
-of this documentation set.
+The repository now contains executable Python domain and integration models,
+packaging and tests. The earlier Phase 0 documentation-only description is
+historical, not the current implementation status. Current verified behavior
+and partial/deferred requirements are recorded in the implementation report
+and traceability matrix. Passing digital tests does not mean every product
+requirement is complete or that the model is physical PCB firmware.
 
 ---
 
@@ -166,3 +162,15 @@ of this documentation set.
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+
+## Remaining model boundaries after the corrective pass
+
+Authentication remains an asserted Actor flag/role on a trusted in-memory bus,
+not peer authentication or cryptographic replay protection. Record/identity/
+configuration persistence is simulated object retention across restart, not
+process or hardware persistence. Repair verification is an authorized external
+outcome, not proof of physical repair. Structured remote configuration, a full
+Master Control Center multi-group application, physical calibration storage,
+and automatic GC-link-to-managed-fault adaptation are not completed features.
+See PARTIAL/PLANNED rows in requirements_traceability.md; no blanket completion
+claim supersedes those limitations.

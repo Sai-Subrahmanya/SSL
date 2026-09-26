@@ -95,8 +95,8 @@ fields (see [`src/sslv1/comm/frame.py`](../src/sslv1/comm/frame.py)):
 | Field | Encoding in the digital prototype |
 | --- | --- |
 | `SOF` | single byte `0xA5` |
-| `Protocol Version` | single byte, current value `0x01` |
-| `Source Address` | single byte, `0x01`..`0xF6` for nodes, `0x00` for the master |
+| `Protocol Version` | single byte, current value `0x02` |
+| `Source Address` | single byte, `0x01`..`0xF7` for nodes, `0x00` for the master |
 | `Destination Address` | single byte, `0xFF` is broadcast |
 | `Message Type` | single byte, the ordinal position of the type in section 5 |
 | `Payload Length` | 2 bytes, big-endian |
@@ -104,7 +104,7 @@ fields (see [`src/sslv1/comm/frame.py`](../src/sslv1/comm/frame.py)):
 | `Sequence Number` | 2 bytes, big-endian |
 | `CRC` | 2 bytes, big-endian, CRC-16/XMODEM over every preceding byte |
 
-The minimum frame size is 15 bytes. These encodings are a **digital
+The minimum frame size is 11 bytes. These encodings are a **digital
 prototype convention**, not a physical-layer decision: byte order, CRC
 polynomial and address range can be changed in software without affecting the
 architecture, and nothing here validates electrical behaviour.
@@ -151,11 +151,11 @@ notable payloads are:
 
 | Message type | Payload contents |
 | --- | --- |
-| `MEASUREMENT_RESPONSE` | timestamp (8 bytes), voltage in mV, current in mA, power in mW, energy in mWh, light level (all 4 bytes each, big-endian), then one byte each for effective mode, commanded state, switching feedback, actual state, sensor status, communication status and controller status |
+| `MEASUREMENT_RESPONSE` | timestamp (8 bytes), voltage in mV, current in mA, power in mW (4 bytes each), energy in mWh and light level (8 bytes each, big-endian), then one byte each for effective mode, commanded state, switching feedback, actual state, sensor status, communication status and controller status |
 | `CONTROL_COMMAND` | subtype (1 byte), target state (1 byte), parameter (4 bytes), length-prefixed command id |
 | `CONTROL_ACK` | execution status (1 byte), actual state (1 byte), length-prefixed command id |
 | `FAULT_REPORT` | fault id, fault type, diagnostic classification, fault state, notification state, severity, confirmation count |
-| `CONFIG_WRITE` | configuration version (4 bytes) followed by length-prefixed integer parameters |
+| `CONFIG_WRITE` | configuration version (2 bytes) followed by length-prefixed integer parameters |
 | `TIME_SYNC` | master time in ticks (8 bytes) |
 | `IDENTIFY_ACK` | product, site, group and lamp ids and the MCU unique id |
 
@@ -354,3 +354,78 @@ recorded as assumptions pending a Phase 9 decision.
 - [07_configuration.md](07_configuration.md)
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
+
+## Revision 2 digital protocol and transaction contract
+
+The 17 message types are unchanged. The payload extension changes the wire
+layout, so the prototype now uses **protocol version 2** and rejects version 1
+and unknown versions before receiver state changes. This is a digital codec
+revision, not a frozen physical protocol or a new product generation.
+
+`encode_payload` / `decode_payload` are the complete wire payload API.
+`MessageCodec` implements the inner message body. The complete envelope is a
+2-byte big-endian body length, that many body bytes, then typed metadata.
+Strings use 2-byte UTF-8 byte lengths. Decoding rejects invalid enum codes,
+truncation, trailing bytes, duplicate/noncanonical parameter encodings and
+noncanonical booleans. Empty ordinary requests also accept the empty-payload
+shorthand. `FAULT_REPORT` polls use an empty payload; `EVENT_REPORT` polls use
+a 4-byte confirmed event ID (zero initially). These are direction-specific
+pull requests using the existing report types, not new types.
+
+| Metadata | Wire representation / meaning |
+| --- | --- |
+| Every response | Signed 4-byte `request_sequence`, matched to source and expected response type |
+| CONTROL_COMMAND, CONFIG_WRITE, TIME_SYNC | Actor-present byte, length-prefixed actor ID, role byte, authenticated byte; missing actors cannot perform privileged actions |
+| CONTROL_ACK | Effective mode, active override, configured mode (one byte each), energy accumulator (8-byte binary float), in addition to command ID, execution status and observed actual state |
+| CONFIG_ACK | Version, acceptance, reason and applied/read-back scalar parameter map |
+| MEASUREMENT_REQUEST | 8-byte confirmed stored-record sequence (zero initially) |
+| MEASUREMENT_RESPONSE | 8-byte stored-record sequence (zero for live-only readings), time-sync-state byte and availability-mask byte; missing readings do not become valid zeros |
+| EVENT_REPORT response | Actor string, in addition to event identity/type/severity/reason |
+
+Actor metadata is an **assertion supplied by the trusted simulation**. CRC is
+not authentication. This does not protect against a hostile peer forging a
+role or master address; authentication, cryptography and keys remain outside
+this prototype. The receiver authorizes the asserted actor for the actual
+subtype instead of manufacturing a privileged role from the subtype.
+
+Both receivers use bounded modular 16-bit sequence history. Transmit counters
+wrap. A malformed or unprocessed response does not consume sequence state.
+The Lamp Node caches recent replies to identical retried requests; conflicting
+reuse or stale requests are rejected. Command-ID idempotency and configuration
+version ordering are additional safeguards, independent of frame sequence.
+
+| Request / report | Sender / receiver and actual response path | Regression evidence |
+| --- | --- | --- |
+| STATUS_REQUEST / STATUS_RESPONSE | GC poll -> node snapshot -> matched registration.status | test_malformed_frame_does_not_consume_sequence_or_finish_poll |
+| MEASUREMENT_REQUEST / MEASUREMENT_RESPONSE | GC poll -> oldest valid buffered measurement (or live sample) -> aggregation/buffering; next request confirms receipt | test_offline_measurement_history_is_replayed_and_retained |
+| CONTROL_COMMAND / CONTROL_ACK | Authorized GC pending request -> node authorization/execution -> correlated ACK and subsequent verification evidence | test_remote_role_matrix_before_transmission; test_delivery_and_ack_are_not_actual_verification |
+| CONFIG_READ / CONFIG_ACK | GC read_configuration -> node scalar readback -> registration.configuration | test_config_ordering_and_readback |
+| CONFIG_WRITE / CONFIG_ACK | Authorized GC pending write -> atomic versioned node update -> readback validation | test_config_ordering_and_readback; test_unauthorized_config_never_transmitted |
+| TIME_SYNC / TIME_ACK | ADMINISTER-authorized distribution -> monotonic node synchronization -> validated requested/local tick match | test_identity_time_heartbeat_ack_dispatch; test_time_distribution_denied_before_bus |
+| IDENTIFY / IDENTIFY_ACK | GC identify -> node identity -> checked against registered product/site/group/lamp | test_identity_time_heartbeat_ack_dispatch |
+| HEARTBEAT / HEARTBEAT_ACK | GC poll -> local tick response -> matched registration.heartbeat_ack | test_identity_time_heartbeat_ack_dispatch |
+| FAULT_REPORT | GC pull -> active fault snapshot -> fault aggregation | test_fault_report_is_aggregated_without_mutating_local_lifecycle |
+| EVENT_REPORT | GC pull/confirmation -> retained event -> idempotent buffering; node advances only after confirmation | test_event_report_loss_retry_and_confirm_does_not_lose_history |
+
+Tests above are in `tests/test_post_merge.py`. Existing codec, sequence and
+multi-node tests remain in `tests/test_comm.py` and `test_group_controller.py`.
+
+`poll()` starts requests on idle nodes and returns the previous validated
+poll-result flags, **not bus delivery results**. Initially the flags are false.
+`collect_responses()` dispatches replies then services deadlines;
+`service_timeouts()` can also be driven explicitly after advancing the logical
+clock. Each node has independent pending requests, deadlines and bounded
+retries. Exhaustion marks communication fault and fails pending commands;
+late responses cannot resurrect them. Retry deadlines are capped by the initial
+absolute transaction expiry; exhaustion does not invent missed exchanges. No wall-clock waiting or background
+thread is implied. Scenarios must pump node responses onto the bus.
+
+Commands remain RECEIVED in the GC after authorization/transmission. A matched
+execution ACK advances EXECUTED and ACKNOWLEDGED. Physical ON/OFF commands
+require a fresh post-command observation with consistent electrical evidence,
+matching actual state, effective mode and override before ACTUAL_STATE_VERIFIED.
+The node may return a later response to the same outstanding request after a
+sample; this is delayed completion, not an unsolicited command. A mode change,
+RETURN_TO_AUTO and RESET_ENERGY verify their respective configuration, override
+and accumulator state, not electrical actuation. Local ON/OFF commands also
+wait for fresh observations; a commanded boolean is never measured feedback.

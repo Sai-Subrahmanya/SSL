@@ -445,7 +445,7 @@ Closure is auditable (`PR-SECURITY-003`).
 | Fault model defined | Yes |
 | Fault lifecycle defined | Yes |
 | Confirmation parameters | Configurable - values not yet decided |
-| Implementation | **Not started** (Phase 6) |
+| Implementation | Digital lifecycle implemented; repair outcome is an authorized external input |
 
 ---
 
@@ -458,3 +458,29 @@ Closure is auditable (`PR-SECURITY-003`).
 - [07_configuration.md](07_configuration.md)
 - [08_testing_strategy.md](08_testing_strategy.md)
 - [09_digital_prototype_scope.md](09_digital_prototype_scope.md)
+
+## Corrective lifecycle integration
+
+Confirmation requires consecutive observations of the same classification
+inside the configured window. An intervening classification resets the other
+suspected counters, not confirmed/latched faults. Confirmed evidence is retained
+separately from latest observations. Recurrence has a new ID and a
+previous_fault_id link. Notification initialization occurs only once per fault;
+persistent abnormal observations do not reset reminders, escalation or retries.
+Notification reason does not overwrite fault confirmation reason.
+
+Operator-facing acknowledgement/repair/verification paths authorize before
+mutation. Illegal transitions emit FAULT_TRANSITION_REJECTED and still raise;
+legal repair-report and notification events have their own event types. Events
+retain actor, supplied logical timestamp and fault relationship, and every
+emitted fault event ID is linked back to the fault. No notification failure
+changes lighting or closes a fault.
+
+Repair verification currently accepts an **authorized externally supplied
+outcome and optional evidence**. It enforces lifecycle, preserves original
+evidence and records closure/failure; it does not independently establish a
+physical repair or automatically compare an arbitrary repair evidence schema.
+PR-FAULT-011 is PARTIAL for that reason. Likewise, GC communication health and
+fault events are implemented, but automatic conversion of every GC link fault
+into a fully managed per-lamp FaultEngine workflow remains an integration
+limitation (PR-COMM-008). These are not hardware-validation claims.

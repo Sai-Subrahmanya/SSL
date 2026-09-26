@@ -314,19 +314,19 @@ Details in [04_fault_management.md](04_fault_management.md).
 | Phase | Name | Scope summary | Status |
 | --- | --- | --- | --- |
 | Phase 0 | Repository foundation | Structure, documentation, requirements baseline, assumptions, traceability, development rules. | **Complete** |
-| Phase 1 | Core domain model | Core entities, identifiers, value objects, enums, state definitions. | **Complete (digital prototype)** |
-| Phase 2 | Lamp Node | Lamp Node module: responsibilities, interfaces, lifecycle, identity. | **Complete (digital prototype)** |
-| Phase 3 | Lighting control | Operating modes, priority handling, override handling. | **Complete (digital prototype)** |
-| Phase 4 | Measurement model | Voltage/current/power/energy/light-level handling, sampling, sensor health. | **Complete (digital prototype)** |
-| Phase 5 | Diagnostics | Expected-versus-actual diagnostic rules, evidence combination. | **Complete (digital prototype)** |
-| Phase 6 | Fault lifecycle | Detection, confirmation, latching, notification, acknowledgement, repair, verification, closure. | **Complete (digital prototype)** |
-| Phase 7 | Event / logging | Event model, local event and measurement logging. | **Complete (digital prototype)** |
-| Phase 8 | Persistent storage simulation | Record format, integrity, power-loss recovery, retention, store-and-forward. | **Complete (digital prototype)** |
-| Phase 9 | RS-485 protocol | Framing, message types, sequencing, CRC, addressing. | **Complete (digital prototype)** |
-| Phase 10 | Group Controller | Polling, aggregation, command forwarding, retry/timeout, buffering. | **Complete (digital prototype)** |
-| Phase 11 | Communication failure / recovery | Communication state machine, degradation, recovery, re-synchronization. | **Complete (digital prototype)** |
-| Phase 12 | Configuration | Configuration model, distribution, validation, auditability. | **Complete (digital prototype)** |
-| Phase 13 | Multi-node simulation | Multiple lamp nodes, group behaviour, scalability. | **Complete (digital prototype)** |
+| Phase 1 | Core domain model | Core entities, identifiers, value objects, enums, state definitions. | Implemented (bounded digital model) |
+| Phase 2 | Lamp Node | Lamp Node module: responsibilities, interfaces, lifecycle, identity. | Implemented (bounded digital model) |
+| Phase 3 | Lighting control | Operating modes, priority handling, override handling. | Implemented (bounded digital model) |
+| Phase 4 | Measurement model | Voltage/current/power/energy/light-level handling, sampling, sensor health. | Implemented (bounded digital model) |
+| Phase 5 | Diagnostics | Expected-versus-actual diagnostic rules, evidence combination. | Implemented (bounded digital model) |
+| Phase 6 | Fault lifecycle | Detection, confirmation, latching, notification, acknowledgement, repair, verification, closure. | Implemented (bounded digital model) |
+| Phase 7 | Event / logging | Event model, local event and measurement logging. | Implemented (bounded digital model) |
+| Phase 8 | Persistent storage simulation | Record format, integrity, power-loss recovery, retention, store-and-forward. | Implemented (bounded digital model) |
+| Phase 9 | RS-485 protocol | Framing, message types, sequencing, CRC, addressing. | Implemented (bounded digital model) |
+| Phase 10 | Group Controller | Polling, aggregation, command forwarding, retry/timeout, buffering. | Implemented (bounded digital model) |
+| Phase 11 | Communication failure / recovery | Communication state machine, degradation, recovery, re-synchronization. | Implemented (bounded digital model) |
+| Phase 12 | Configuration | Configuration model, distribution, validation, auditability. | Implemented (bounded digital model) |
+| Phase 13 | Multi-node simulation | Multiple lamp nodes, group behaviour, scalability. | Implemented (bounded digital model) |
 | Phase 14 | Fault injection | Deterministic fault injection and recovery behaviour. | Not started |
 | Phase 15 | Master Control Center data layer | Sites, groups, lamps, aggregation, history, no GUI in early phases. | Not started |
 | Phase 16 | Full integration | End-to-end integration of all layers. | Not started |
@@ -336,13 +336,11 @@ Details in [04_fault_management.md](04_fault_management.md).
 Later phases are not implemented in advance. Each phase begins only after its
 requirements are documented and reviewed.
 
-"Complete (digital prototype)" means that the deterministic software model and
-its tests exist in [`src/sslv1/`](../src/sslv1/) and
-[`tests/`](../tests/). It does **not** mean that any physical property has
-been validated: electrical safety, EMC, RF, thermal behaviour, enclosure and
-IP rating, relay lifetime and RTC backup duration all remain unvalidated
-physical work. Per-requirement status and test evidence are recorded in
-[requirements_traceability.md](requirements_traceability.md).
+Model availability is not a claim of full product completion. Seven requirements
+are PARTIAL and three remain PLANNED in the reconciled traceability matrix.
+Physical safety, EMC, RF, thermal/enclosure behavior, relay life and RTC backup
+remain unvalidated. The corrective implementation report defines the actual
+software evidence and remaining scope.
 
 ---
 

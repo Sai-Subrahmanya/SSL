@@ -19,24 +19,19 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Architecture element | Element of [01_system_architecture.md](01_system_architecture.md) that carries it. |
 | Implementation module | Module in [`src/sslv1/`](../src/sslv1/) that implements it, or `Documentation only` where no code is appropriate. |
 | Test evidence | Deterministic test in [`tests/`](../tests/) that exercises it. |
-| Verification status | One of `VERIFIED`, `IMPLEMENTED`, `PLANNED` (see section 3). |
+| Verification status | One of `VERIFIED`, `PARTIAL`, `IMPLEMENTED`, `PLANNED` (see section 3). |
 
-`VERIFIED` means: the module exists, the named test exists, and the full suite
-passes. `VERIFIED` is a **digital prototype** verification only. It never means
-that a physical property (electrical safety, EMC, RF, thermal, enclosure/IP,
-relay lifetime, RTC backup duration or certification) has been validated.
-
-The counts above were verified by script rather than by hand: each `PR-*` row
-was parsed, each named test was checked against `pytest --collect-only`, and
-each named module was checked to exist on disk. A requirement whose cited test
-does not actually exercise it is a defect, not a status - see `PR-COMM-005`,
-which was corrected in this revision.
+`VERIFIED` is bounded to the explicit digital behavior and cited evidence. A
+module/test merely existing, or the suite passing, is not sufficient proof.
+Physical properties are never validated by these rows. PARTIAL rows identify
+remaining model/integration scope rather than masking it with passing tests.
 
 ## 3. Status definitions
 
 | Status | Meaning |
 | --- | --- |
-| `VERIFIED` | Implemented in `src/sslv1/` and covered by a deterministic test that passes. Digital prototype only. |
+| `VERIFIED` | The bounded digital behavior is implemented and exercised by the cited tests; no physical validation. |
+| `PARTIAL` | Some behavior is modeled/tested, but the explicit limitation below prevents full requirement verification. |
 | `IMPLEMENTED` | Implemented in `src/sslv1/` but not yet covered by a named test. |
 | `PLANNED` | Not implemented. Reserved for physical-only requirements, requirements needing a real tamper source, and work belonging to a later phase. |
 
@@ -44,7 +39,8 @@ which was corrected in this revision.
 
 | Status | Count |
 | --- | --- |
-| `VERIFIED` | 85 |
+| `VERIFIED` | 78 |
+| `PARTIAL` | 7 |
 | `IMPLEMENTED` | 0 |
 | `PLANNED` | 3 |
 
@@ -74,7 +70,7 @@ deterministic: no wall-clock time, no randomness, no hardware access.
 | `PR-COMM-005` | Sequence numbering, duplicate and replay handling | RS-485 field bus / Group Controller | `src/sslv1/nodes/group_controller.py` (`SequenceTracker`, `_handle_frame`) | `test_group_controller.py::test_increasing_sequence_numbers_are_accepted`; `test_group_controller.py::test_duplicate_frame_is_detected_and_reported`; `test_group_controller.py::test_duplicate_is_reported_not_processed`; `test_group_controller.py::test_out_of_window_sequence_is_reported_as_stale`; `test_group_controller.py::test_sequence_wraparound_is_handled`; `test_group_controller.py::test_sequence_tracking_is_per_source`; `test_group_controller.py::test_duplicate_detection_does_not_disturb_communication_state` | `VERIFIED` |
 | `PR-COMM-006` | CRC integrity verification | RS-485 field bus / Group Controller | src/sslv1/comm/crc.py, src/sslv1/comm/frame.py | test_comm.py::test_crc_failure_is_detected, ::test_bus_corruption_is_detectable | `VERIFIED` |
 | `PR-COMM-007` | Polling, timeout and retry policy | RS-485 field bus / Group Controller | src/sslv1/nodes/group_controller.py (poll, poll_timeout_ticks, poll_retry_count) | test_group_controller.py::test_communication_fault_is_detected_after_retries | `VERIFIED` |
-| `PR-COMM-008` | Communication state machine | RS-485 field bus / Group Controller | src/sslv1/comm/state_machine.py (CommunicationStateMachine) | test_comm.py::test_healthy_to_retry_to_degraded_to_fault, ::test_recovery_returns_to_healthy, ::test_retry_recovers_to_healthy | `VERIFIED` |
+| `PR-COMM-008` | Communication state machine | RS-485 field bus / Group Controller | src/sslv1/comm/state_machine.py (CommunicationStateMachine) | test_comm.py::test_healthy_to_retry_to_degraded_to_fault, ::test_recovery_returns_to_healthy, ::test_retry_recovers_to_healthy | `PARTIAL` |
 | `PR-COMM-009` | Communication failure must not stop local operation | RS-485 field bus / Group Controller | src/sslv1/nodes/lamp_node.py (local control independent of the bus) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting; test_scenarios.py::test_scenario_38_communication_retry_then_degraded | `VERIFIED` |
 | `PR-COMM-010` | Command subtypes carried inside CONTROL_COMMAND | RS-485 field bus / Group Controller | src/sslv1/enums.py (ControlSubtype), src/sslv1/comm/protocol.py (CONTROL_COMMAND payload) | test_command.py::test_reset_energy_is_a_control_subtype_not_a_message_type; test_comm.py::test_control_command_payload_carries_reset_energy_subtype | `VERIFIED` |
 
@@ -82,8 +78,8 @@ deterministic: no wall-clock time, no randomness, no hardware access.
 
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
-| `PR-CONFIG-001` | Configuration parameter set | Configuration management | src/sslv1/configuration.py (LampConfiguration) | test_configuration.py::test_configuration_covers_every_documented_parameter | `VERIFIED` |
-| `PR-CONFIG-002` | Configuration read and write over the bus | Configuration management | src/sslv1/nodes/group_controller.py (distribute_configuration), src/sslv1/nodes/lamp_node.py (configuration read and write handlers) | test_group_controller.py::test_configuration_distribution_is_acknowledged, ::test_invalid_configuration_is_rejected_by_the_node | `VERIFIED` |
+| `PR-CONFIG-001` | Configuration parameter set | Configuration management | src/sslv1/configuration.py (LampConfiguration) | test_configuration.py::test_configuration_covers_every_documented_parameter | `PARTIAL` |
+| `PR-CONFIG-002` | Configuration read and write over the bus | Configuration management | src/sslv1/nodes/group_controller.py (distribute_configuration), src/sslv1/nodes/lamp_node.py (configuration read and write handlers) | test_group_controller.py::test_configuration_distribution_is_acknowledged, ::test_invalid_configuration_is_rejected_by_the_node | `PARTIAL` |
 | `PR-CONFIG-003` | Configuration validation | Configuration management | src/sslv1/configuration.py (LampConfiguration.validate / validated) | test_scenarios.py::test_scenario_44_configuration_validation; test_configuration.py::test_validation_rejects_every_invalid_threshold, ::test_hysteresis_wider_than_the_dead_band_is_rejected | `VERIFIED` |
 | `PR-CONFIG-004` | Configuration change auditability | Configuration management | src/sslv1/event.py (EventLog), src/sslv1/nodes/lamp_node.py (_record_event) | test_scenarios.py::test_scenario_49_important_transitions_generate_events, ::test_scenario_50_rejected_command_is_audited | `VERIFIED` |
 | `PR-CONFIG-005` | Configuration persistence and versioning | Configuration management | src/sslv1/nodes/lamp_node.py (config_version, _apply_config_parameters) | test_group_controller.py::test_configuration_distribution_is_acknowledged (config_version is carried) | `VERIFIED` |
@@ -127,7 +123,7 @@ deterministic: no wall-clock time, no randomness, no hardware access.
 | `PR-FAULT-008` | Acknowledgement, reminder and escalation | Fault management (Lamp Node) | src/sslv1/notification.py (tick, acknowledge, delivery failure handling) | test_fault.py::test_reminder_and_escalation_do_not_change_fault_state, ::test_notification_failure_is_retried_then_reported, ::test_delivery_failure_retry_path_still_returns_to_pending, ::test_delivery_failure_beyond_retry_limit_does_not_crash, ::test_notification_reminder_is_idempotent, ::test_notification_reminder_does_not_spam_events, ::test_notification_escalates_after_timeout_without_crash, ::test_notification_tick_is_legal_from_every_resting_state | `VERIFIED` |
 | `PR-FAULT-009` | Unacknowledged alerts must not switch the lamp OFF | Fault management (Lamp Node) | src/sslv1/nodes/lamp_node.py (no notification-to-lighting coupling) | test_scenarios.py::test_scenario_30_fault_acknowledgement_does_not_dim_the_light | `VERIFIED` |
 | `PR-FAULT-010` | Repair workflow | Fault management (Lamp Node) | src/sslv1/fault.py (acknowledge, start_repair, report_repaired) | test_fault.py::test_repair_workflow, ::test_repair_cannot_start_before_acknowledgement | `VERIFIED` |
-| `PR-FAULT-011` | Verification workflow and failed verification | Fault management (Lamp Node) | src/sslv1/fault.py (verify) | test_fault.py::test_successful_verification_closes_the_fault, ::test_failed_verification_returns_to_an_active_fault_state; test_scenarios.py::test_scenario_32_failed_verification_reopens_the_fault | `VERIFIED` |
+| `PR-FAULT-011` | Verification workflow and failed verification | Fault management (Lamp Node) | src/sslv1/fault.py (verify) | test_fault.py::test_successful_verification_closes_the_fault, ::test_failed_verification_returns_to_an_active_fault_state; test_scenarios.py::test_scenario_32_failed_verification_reopens_the_fault | `PARTIAL` |
 | `PR-FAULT-012` | Fault closure and failure containment | Fault management (Lamp Node) | src/sslv1/fault.py (FaultLifecycle CLOSED transition), src/sslv1/nodes/lamp_node.py (per-node engines) | test_fault.py::test_one_nodes_fault_does_not_affect_another_node; test_scenarios.py::test_scenario_46_multi_node_isolation | `VERIFIED` |
 | `PR-FAULT-013` | Notification state independent of fault lifecycle | Fault management (Lamp Node) | src/sslv1/notification.py (NotificationLifecycle, independent of FaultLifecycle) | test_fault.py::test_notification_state_is_independent_of_fault_lifecycle, ::test_notified_is_not_a_fault_lifecycle_state, ::test_notify_from_any_waiting_state_does_not_crash, ::test_notification_tick_is_legal_from_every_resting_state; test_scenarios.py::test_scenario_33_notification_state_independent | `VERIFIED` |
 | `PR-FAULT-014` | Fault category, diagnostic classification and root cause | Fault management (Lamp Node) | src/sslv1/diagnostics.py (classification vs category), src/sslv1/fault.py (no root-cause field) | test_diagnostics.py::test_fault_category_and_classification_are_distinct; test_scenarios.py::test_scenario_18_under_current_and_open_load | `VERIFIED` |
@@ -159,14 +155,14 @@ deterministic: no wall-clock time, no randomness, no hardware access.
 | `PR-OFFLINE-002` | Local operation without the Master Control Center | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (local control only) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting | `VERIFIED` |
 | `PR-OFFLINE-003` | Local operation without the Group Controller | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (operates with no controller traffic) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting | `VERIFIED` |
 | `PR-OFFLINE-004` | Offline record buffering | Offline operation and buffering | src/sslv1/storage.py (RecordStore buffering), src/sslv1/nodes/group_controller.py (pending queue) | test_group_controller.py::test_records_are_buffered_while_upstream_is_unavailable | `VERIFIED` |
-| `PR-OFFLINE-005` | Post-recovery synchronization without silent loss | Offline operation and buffering | src/sslv1/nodes/group_controller.py (forward_upstream confirmed-only removal, no duplicate upload) | test_group_controller.py::test_buffered_records_are_uploaded_after_recovery, ::test_no_duplicate_upload_of_the_same_record, ::test_communication_recovery_resynchronizes | `VERIFIED` |
+| `PR-OFFLINE-005` | Post-recovery synchronization without silent loss | Offline operation and buffering | src/sslv1/nodes/group_controller.py (forward_upstream confirmed-only removal, no duplicate upload) | test_group_controller.py::test_buffered_records_are_uploaded_after_recovery, ::test_no_duplicate_upload_of_the_same_record, ::test_communication_recovery_resynchronizes | `PARTIAL` |
 
 ### 5.10 Group Controller / node management
 
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
 | `PR-SCALABILITY-001` | Lamps per group | Group Controller / node management | src/sslv1/nodes/group_controller.py (GroupControllerConfig.max_nodes) | test_scenarios.py::test_scenario_47_group_controller_capacity; test_group_controller.py::test_group_controller_supports_the_initial_group_target | `VERIFIED` |
-| `PR-SCALABILITY-002` | Groups per site | Group Controller / node management | src/sslv1/identity.py (site/group hierarchy), src/sslv1/nodes/group_controller.py | test_group_controller.py::test_group_snapshot_reports_communication_state (group identity carried) | `VERIFIED` |
+| `PR-SCALABILITY-002` | Groups per site | Group Controller / node management | src/sslv1/identity.py (site/group hierarchy), src/sslv1/nodes/group_controller.py | test_group_controller.py::test_group_snapshot_reports_communication_state (group identity carried) | `PARTIAL` |
 | `PR-SCALABILITY-003` | Failure containment | Group Controller / node management | src/sslv1/nodes/lamp_node.py (per-node state), src/sslv1/nodes/group_controller.py (per-node registration) | test_group_controller.py::test_one_silent_node_does_not_block_the_others, ::test_one_faulty_node_does_not_degrade_the_group; test_scenarios.py::test_scenario_46_multi_node_isolation | `VERIFIED` |
 | `PR-SCALABILITY-004` | Architectural headroom | Group Controller / node management | src/sslv1/nodes/group_controller.py (max_nodes is configuration, not a fixed 16) | test_group_controller.py::test_group_controller_is_not_limited_to_sixteen | `VERIFIED` |
 | `PR-SCALABILITY-005` | Group Controller local storage abstraction | Group Controller / node management | src/sslv1/nodes/group_controller.py (record buffering into RecordStore), src/sslv1/storage.py | test_group_controller.py::test_group_controller_local_storage_is_abstract | `VERIFIED` |
@@ -192,7 +188,7 @@ deterministic: no wall-clock time, no randomness, no hardware access.
 | `PR-STORAGE-004` | Corruption detection and handling | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (StorageRecord.compute_crc, detect_corruption, corrupt) | test_storage.py::test_corrupted_record_is_detected_and_flagged, ::test_corrupt_record_is_excluded_from_upload | `VERIFIED` |
 | `PR-STORAGE-005` | Retention: automatic deletion off by default | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (RetentionPolicy.automatic_deletion defaults to False) | test_storage.py::test_automatic_deletion_is_disabled_by_default, ::test_retention_policy_requires_explicit_configuration | `VERIFIED` |
 | `PR-STORAGE-006` | Storage-full visibility | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (StorageFullError, RecordStore.is_full) | test_storage.py::test_storage_full_is_explicit_and_never_silent; test_scenarios.py::test_scenario_36_storage_full_is_visible | `VERIFIED` |
-| `PR-STORAGE-007` | Separation of configuration/calibration storage | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (RecordType separation) | test_storage.py::test_records_carry_the_required_envelope (record type is part of the envelope) | `VERIFIED` |
+| `PR-STORAGE-007` | Separation of configuration/calibration storage | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (RecordType separation) | test_storage.py::test_records_carry_the_required_envelope (record type is part of the envelope) | `PARTIAL` |
 | `PR-STORAGE-008` | Store-and-forward buffering with upload confirmation | Record storage (Lamp Node / Group Controller) | src/sslv1/nodes/group_controller.py (forward_upstream and the pending-upload queue) | test_group_controller.py::test_records_are_buffered_while_upstream_is_unavailable, ::test_buffered_records_are_uploaded_after_recovery, ::test_no_duplicate_upload_of_the_same_record | `VERIFIED` |
 | `PR-STORAGE-009` | Record lifecycle and retention policy | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (mark_uploaded / mark_confirmed / delete), src/sslv1/enums.py (RecordLifecycleState) | test_storage.py::test_upload_confirmation_does_not_delete_the_record, ::test_queue_removal_and_deletion_are_distinct_operations, ::test_pending_upload_records_cannot_be_deleted; test_scenarios.py::test_scenario_35_upload_confirmation_does_not_delete | `VERIFIED` |
 
@@ -216,3 +212,27 @@ over-claim. Each is a physical or external-dependency property.
 | `PR-TIME-005` | Physical RTC accuracy and backup duration need real hardware and time; the digital model only proves the state machine. |
 | `PR-SECURITY-004` | Tamper detection needs a real tamper source; only the event vocabulary exists. |
 | `PR-SECURITY-005` | Security validation (key management, authentication strength) is explicitly out of the digital prototype's scope. |
+
+## Corrective evidence and scoped limitations
+
+The complete corrective regression suite is `tests/test_post_merge.py`; the
+implementation report maps findings to these tests and records final checks.
+Existing evidence above remains useful but is not sufficient in isolation for
+remote authorization, fresh actual verification, retries, configuration readback
+or retention integration.
+
+| Requirement | Remaining scope / reason for PARTIAL |
+| --- | --- |
+| `PR-CONFIG-001` | Structured clear policies and group-scope mappings remain deferred; see configuration field audit. |
+| `PR-CONFIG-002` | The supported remote integer-scalar subset is tested; structured schedules and remaining fields are not on the bus. |
+| `PR-FAULT-011` | Authorized externally supplied verification outcome; no automatic repair-evidence comparator or physical repair proof. |
+| `PR-COMM-008` | Communication FSM/deadlines/events tested; automatic GC link-fault adaptation into per-lamp managed fault workflow is not implemented. |
+| `PR-SCALABILITY-002` | Multiple group identities/controllers can be constructed, but a full multi-group MCC aggregation layer is not implemented. |
+| `PR-STORAGE-007` | Configuration is separate from record objects; calibration storage and physical flash separation are not implemented. |
+| `PR-OFFLINE-005` | Measurement/event replay and confirmation are tested; complete automatic recovery/synchronization orchestration remains caller-driven. |
+
+The local persistence and RTC-backed requirement rows verify **in-memory
+restart/logical-time semantics only**, not disk/flash persistence or physical
+RTC hardware. Notification delivery is injected, not an external messaging
+service. Security metadata is asserted on a trusted simulated bus; no peer
+authentication, cryptography or production permission matrix is claimed.

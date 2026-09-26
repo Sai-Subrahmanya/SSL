@@ -267,7 +267,7 @@ designed.
 | Record envelope | Defined (field level) |
 | Commit and corruption semantics | Defined |
 | Physical layout, wear levelling, capacity | **Not defined** - Phase 8 |
-| Implementation | **Not started** (Phase 8) |
+| Implementation | Logical RecordStore and event history implemented; no physical storage driver |
 
 ---
 
@@ -281,3 +281,36 @@ designed.
 - [08_testing_strategy.md](08_testing_strategy.md)
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
+
+## Corrective digital storage semantics
+
+CRC covers sequence, timestamp ticks and synchronization validity, type,
+device identity and payload. Upload/confirmation require valid committed
+records and legal lifecycle state. Corrupt records cannot be uploaded or
+confirmed; recovery reports discarded records in the store audit log.
+
+RecordStore.delete requires an authenticated ADMIN/OWNER Actor under the
+preliminary role mapping, refuses pending/non-retained/too-young records and
+audits denials and accepted deletion. Successful deletion creates a logical
+tombstone, not physical secure erasure, and reclaims simulated capacity. A
+second delete cannot manufacture another successful transition. The store has
+its own audit log even without a callback; node/controller callbacks additionally
+record structured actor and record identity. Upload confirmation leaves retained
+history intact. Lamp configuration retention is wired to the actual store.
+
+Measurement polling replays the oldest valid buffered node measurement before
+live-only readings. The GC confirms a stored-record sequence only after local
+buffering, on its next request; retries are idempotent. Event polling similarly
+confirms IDs before the node advances. Thus a lost response does not silently
+remove pending history. Node retained records/events are not deleted by these
+confirmations. GC command, configuration, communication and synchronization
+audit records are also buffered for upstream delivery.
+
+Capacity exhaustion raises/records an explicit condition without overwriting
+history. Unbuffered samples/events remain visible as failure events; there is
+no promise of unbounded history in finite capacity. This deterministic simulation
+behavior **does not resolve A-09**. Retention defaults remain unspecified (A-10,
+A-29); no automatic deletion worker or numeric retention policy is invented.
+The stores and logs are in-memory objects retained by the simulated restart;
+process death, flash programming, filesystem persistence, wear leveling and
+real power interruption are not validated. Calibration storage is not implemented.
