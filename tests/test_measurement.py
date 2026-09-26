@@ -36,7 +36,7 @@ def make_measurement(**overrides):
         site_id=SITE,
         group_id=GROUP,
         lamp_id=Identifier("LAMP-01"),
-        operating_mode=OperatingMode.AUTO_SENSOR,
+        effective_mode=OperatingMode.AUTO_SENSOR,
         commanded_state=LampState.ON,
         switching_feedback=LampState.ON,
         actual_state=LampState.ON,
@@ -61,7 +61,7 @@ def test_measurement_carries_the_documented_field_set():
     payload = measurement.to_dict()
     for key in (
         "timestamp_ticks", "time_sync_state", "site_id", "group_id", "lamp_id",
-        "operating_mode", "commanded_state", "switching_feedback", "actual_state",
+        "effective_mode", "commanded_state", "switching_feedback", "actual_state",
         "voltage", "current", "power", "energy", "light_level",
         "sensor_status", "communication_status", "controller_status",
         "sequence_number",
@@ -189,7 +189,7 @@ def test_measurement_round_trips_through_the_wire_codec():
         "power_mw": 103500,
         "energy_mwh": 120000,
         "light_level": 10,
-        "operating_mode": measurement.operating_mode,
+        "effective_mode": measurement.effective_mode,
         "commanded_state": measurement.commanded_state,
         "switching_feedback": measurement.switching_feedback,
         "actual_state": measurement.actual_state,
@@ -201,7 +201,7 @@ def test_measurement_round_trips_through_the_wire_codec():
                              encode_payload(MessageType.MEASUREMENT_RESPONSE, payload))
     assert decoded["voltage_mv"] == 230000
     assert decoded["switching_feedback"] is LampState.ON
-    assert decoded["operating_mode"] is OperatingMode.AUTO_SENSOR
+    assert decoded["effective_mode"] is OperatingMode.AUTO_SENSOR
 
 
 def test_diagnostic_engine_uses_measurement_evidence(lamp_node):
@@ -211,3 +211,40 @@ def test_diagnostic_engine_uses_measurement_evidence(lamp_node):
     )
     result = engine.evaluate(evidence)
     assert result.classification is DiagnosticClassification.POSSIBLE_OPEN_LOAD
+
+
+# --------------------------------------------------------------------------
+# effective_mode semantics (D-031, PR-CONTROL-007)
+#
+# Regression: the field used to be called ``operating_mode``, which is
+# ambiguous because it does not say *which* of configured_mode /
+# active_override / effective_mode it carries. It carries the effective mode.
+# --------------------------------------------------------------------------
+def test_measurement_carries_effective_mode_not_configured_mode(lamp_node, operator):
+    """The measurement records the mode in force, not the configured mode."""
+    lamp_node.force_on(operator, ticks=1000)
+    lamp_node.step(healthy_sources(light_level=10.0), ticks=2000)
+    measurement = lamp_node.last_measurement
+
+    assert measurement.effective_mode is OperatingMode.FORCE_ON
+    assert lamp_node.control.configured_mode.value == "AUTO_SENSOR"
+
+
+def test_measurement_effective_mode_returns_to_configured_after_override_clears(
+    lamp_node, operator
+):
+    """Clearing the override restores the configured mode in the measurement."""
+    lamp_node.force_off(operator, ticks=1000)
+    lamp_node.step(healthy_sources(light_level=10.0), ticks=2000)
+    assert lamp_node.last_measurement.effective_mode is OperatingMode.FORCE_OFF
+
+    lamp_node.return_to_auto(operator, ticks=3000)
+    lamp_node.step(healthy_sources(light_level=10.0), ticks=4000)
+    assert lamp_node.last_measurement.effective_mode is OperatingMode.AUTO_SENSOR
+
+
+def test_measurement_has_no_operating_mode_field():
+    """The ambiguous legacy name must not survive on the domain entity."""
+    assert not hasattr(make_measurement(), "operating_mode")
+    assert "operating_mode" not in make_measurement().to_dict()
+    assert "effective_mode" in make_measurement().to_dict()

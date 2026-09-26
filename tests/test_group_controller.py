@@ -11,6 +11,7 @@ import pytest
 
 from sslv1.enums import (
     CommState,
+    EventType,
     LampState,
     MessageType,
     TimeSyncState,
@@ -381,3 +382,145 @@ def test_unregistered_frame_is_rejected(clock, bus, authorizer, group_controller
     assert any(
         e.event_type.value == "FRAME_REJECTED" for e in group_controller.events
     )
+
+
+# --------------------------------------------------------------------------
+# 41. sequence numbering, duplicate and replay handling (PR-COMM-005)
+#
+# These exercise the receiver's own tracking, not a helper. Before this
+# section the requirement was marked VERIFIED on the strength of an
+# addressing test and a code-stability test, neither of which touches
+# sequence numbers at all.
+# --------------------------------------------------------------------------
+def _status_frame(source: int, sequence: int):
+    from sslv1.comm import Frame
+
+    return Frame(
+        source=source,
+        destination=0,
+        message_type=MessageType.STATUS_REQUEST,
+        sequence=sequence,
+    )
+
+
+def _feed(group_controller, source: int, sequence: int):
+    """Deliver one frame from a node and run the receive path."""
+    group_controller.receive(_status_frame(source, sequence))
+    group_controller.collect_responses()
+
+
+def test_increasing_sequence_numbers_are_accepted(clock, bus, authorizer,
+                                                  group_controller):
+    node = build_node(clock, bus, authorizer, 1)
+    group_controller.register_node(node.lamp_id, node.bus_address)
+
+    for sequence in (1, 2, 3, 4, 5):
+        _feed(group_controller, 1, sequence)
+
+    registration = group_controller.registration_for(node.lamp_id)
+    assert registration.sequences.newest == 5
+    assert registration.duplicate_frames == 0
+    assert registration.stale_frames == 0
+
+
+def test_duplicate_frame_is_detected_and_reported(clock, bus, authorizer,
+                                                  group_controller):
+    node = build_node(clock, bus, authorizer, 1)
+    group_controller.register_node(node.lamp_id, node.bus_address)
+
+    _feed(group_controller, 1, 10)
+    before = len(group_controller.events)
+    _feed(group_controller, 1, 10)  # identical redelivery
+
+    registration = group_controller.registration_for(node.lamp_id)
+    assert registration.duplicate_frames == 1
+    assert registration.stale_frames == 0
+    assert registration.sequences.newest == 10
+    assert any(
+        e.event_type is EventType.DUPLICATE_FRAME_DETECTED
+        for e in list(group_controller.events)[before:]
+    )
+
+
+def test_duplicate_is_reported_not_processed(clock, bus, authorizer,
+                                             group_controller):
+    """A duplicate must not advance the newest marker or look like new data."""
+    node = build_node(clock, bus, authorizer, 1)
+    group_controller.register_node(node.lamp_id, node.bus_address)
+
+    _feed(group_controller, 1, 7)
+    _feed(group_controller, 1, 7)
+
+    registration = group_controller.registration_for(node.lamp_id)
+    assert registration.sequences.newest == 7
+    # The duplicate is rejected before record(), so it is not counted as
+    # processed data; the counter reflects real deliveries only.
+    assert registration.sequences.counts() == {7: 1}
+    assert registration.duplicate_frames == 1
+
+
+def test_out_of_window_sequence_is_reported_as_stale(clock, bus, authorizer,
+                                                     group_controller):
+    node = build_node(clock, bus, authorizer, 1)
+    group_controller.register_node(node.lamp_id, node.bus_address)
+
+    _feed(group_controller, 1, 500)
+    before = len(group_controller.events)
+    _feed(group_controller, 1, 10)  # far behind: a replay of old traffic
+
+    registration = group_controller.registration_for(node.lamp_id)
+    assert registration.stale_frames == 1
+    assert registration.duplicate_frames == 0
+    assert registration.sequences.newest == 500  # must not move backwards
+    assert any(
+        e.event_type is EventType.STALE_FRAME_DETECTED
+        for e in list(group_controller.events)[before:]
+    )
+
+
+def test_sequence_wraparound_is_handled(clock, bus, authorizer, group_controller):
+    """16-bit sequence numbers wrap; a wrap must not read as a stale frame."""
+    node = build_node(clock, bus, authorizer, 1)
+    group_controller.register_node(node.lamp_id, node.bus_address)
+
+    _feed(group_controller, 1, 0xFFF0)
+    _feed(group_controller, 1, 0xFFFE)
+    _feed(group_controller, 1, 0x0002)  # wrapped past the top
+
+    registration = group_controller.registration_for(node.lamp_id)
+    assert registration.stale_frames == 0
+    assert registration.duplicate_frames == 0
+    assert registration.sequences.newest == 0x0002
+
+
+def test_sequence_tracking_is_per_source(clock, bus, authorizer,
+                                         group_controller):
+    """Each node has its own sequence space; one node cannot mask another."""
+    first = build_node(clock, bus, authorizer, 1)
+    second = build_node(clock, bus, authorizer, 2)
+    group_controller.register_node(first.lamp_id, first.bus_address)
+    group_controller.register_node(second.lamp_id, second.bus_address)
+
+    _feed(group_controller, 1, 100)
+    _feed(group_controller, 2, 5)
+
+    one = group_controller.registration_for(first.lamp_id)
+    two = group_controller.registration_for(second.lamp_id)
+    assert one.sequences.newest == 100
+    assert two.sequences.newest == 5
+    assert two.stale_frames == 0
+
+
+def test_duplicate_detection_does_not_disturb_communication_state(
+    clock, bus, authorizer, group_controller
+):
+    """A reported duplicate must not be counted as a communication failure."""
+    node = build_node(clock, bus, authorizer, 1)
+    group_controller.register_node(node.lamp_id, node.bus_address)
+
+    _feed(group_controller, 1, 3)
+    _feed(group_controller, 1, 3)
+
+    registration = group_controller.registration_for(node.lamp_id)
+    assert registration.comm.state is CommState.COMM_HEALTHY
+    assert registration.duplicate_frames == 1

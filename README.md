@@ -190,6 +190,13 @@ physical property has been validated. See
 [docs/requirements_traceability.md](docs/requirements_traceability.md) for the
 per-requirement status and its test evidence.
 
+This status table was audited against the implementation rather than assumed:
+every requirement was mapped to the phase its own verification method names and
+checked against real modules and real tests. Phases 1-13 are complete as
+digital prototypes; the three `PLANNED` requirements belong to Phases 14 and 18
+and are physical or inspection-only. The audited table is in
+[docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md#6-phase-1-13-audited-status).
+
 See [docs/00_project_overview.md](docs/00_project_overview.md) for the full
 roadmap description.
 
@@ -351,9 +358,9 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Architecture baseline | Drafted for review |
 | Assumptions register | Drafted for review (29 assumptions, 18 open) |
 | Engineering decision log | 40 decisions recorded |
-| Requirements traceability | Regenerated: 84 `VERIFIED`, 1 `IMPLEMENTED`, 3 `PLANNED` |
+| Requirements traceability | Regenerated: 85 `VERIFIED`, 0 `IMPLEMENTED`, 3 `PLANNED` |
 | Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (266 tests, all passing) |
+| Deterministic test suite | Implemented in `tests/` (299 tests, all passing) |
 | Physical validation | **Not started** - requires hardware |
 
 "Digital prototype" status means deterministic software behaviour has been

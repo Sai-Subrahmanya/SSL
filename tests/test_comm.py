@@ -143,7 +143,7 @@ def test_measurement_payload_round_trip():
             "power_mw": 103500,
             "energy_mwh": 12000,
             "light_level": 42,
-            "operating_mode": __import__("sslv1.enums", fromlist=["OperatingMode"]).OperatingMode.AUTO_SENSOR,
+            "effective_mode": __import__("sslv1.enums", fromlist=["OperatingMode"]).OperatingMode.AUTO_SENSOR,
             "commanded_state": LampState.ON,
             "switching_feedback": LampState.ON,
             "actual_state": LampState.ON,
@@ -155,7 +155,7 @@ def test_measurement_payload_round_trip():
     decoded = decode_payload(MessageType.MEASUREMENT_RESPONSE, payload)
     assert decoded["voltage_mv"] == 230000
     assert decoded["current_ma"] == 450
-    assert decoded["operating_mode"].value == "AUTO_SENSOR"
+    assert decoded["effective_mode"].value == "AUTO_SENSOR"
 
 
 def test_control_command_payload_carries_reset_energy_subtype():

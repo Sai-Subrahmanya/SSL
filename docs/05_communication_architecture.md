@@ -151,7 +151,7 @@ notable payloads are:
 
 | Message type | Payload contents |
 | --- | --- |
-| `MEASUREMENT_RESPONSE` | timestamp (8 bytes), voltage in mV, current in mA, power in mW, energy in mWh, light level (all 4 bytes each, big-endian), then one byte each for operating mode, commanded state, switching feedback, actual state, sensor status, communication status and controller status |
+| `MEASUREMENT_RESPONSE` | timestamp (8 bytes), voltage in mV, current in mA, power in mW, energy in mWh, light level (all 4 bytes each, big-endian), then one byte each for effective mode, commanded state, switching feedback, actual state, sensor status, communication status and controller status |
 | `CONTROL_COMMAND` | subtype (1 byte), target state (1 byte), parameter (4 bytes), length-prefixed command id |
 | `CONTROL_ACK` | execution status (1 byte), actual state (1 byte), length-prefixed command id |
 | `FAULT_REPORT` | fault id, fault type, diagnostic classification, fault state, notification state, severity, confirmation count |

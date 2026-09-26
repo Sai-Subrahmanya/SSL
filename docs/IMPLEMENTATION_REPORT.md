@@ -4,284 +4,255 @@
 **Branch:** `arena/01a0d86e-ssl`
 **Repository:** `Sai-Subrahmanya/SSL`
 
+> This report was corrected after an independent audit. It supersedes the
+> previous version, which (a) named a stale commit as the current HEAD and
+> (b) described Phases 2-13 as "next" when they were already implemented and
+> tested. Both errors are fixed below. Nothing in this report is a claim of
+> physical validation.
+
 ---
 
 ## 1. Branch
 
 `arena/01a0d86e-ssl`, pushed to `origin`. This is the only branch used; no
-other branch was created, switched to, or deleted.
+other branch was created, switched to, or deleted, and no history was
+rewritten.
 
 ## 2. Commit SHAs
 
 | Commit | Description |
 | --- | --- |
 | `b3af216` | Initial commit (README only) - pre-existing |
-| `048e41c` | `docs: establish smart street light v1 engineering foundation` - Phase 0 documentation, pre-existing on the remote |
-| `dd447bb` | Phase 0 documentation foundation and Phase 1 hardware-independent domain model |
-| `8d08302` | Merge of `origin/arena/01a0d86e-ssl` (integrates `048e41c` without force-push or history rewrite) - **current HEAD** |
+| `048e41c` | Phase 0 documentation foundation - pre-existing on the remote |
+| `dd447bb` | Phase 0 foundation + Phase 1 hardware-independent domain model |
+| `8d08302` | Merge integrating `048e41c` (non-destructive; no force push) |
+| `407053b` | Implementation report added - **HEAD at the start of this audit** |
+| later | Corrections from this audit (see `git log`) |
 
-`git ls-remote origin refs/heads/arena/01a0d86e-ssl` returns `8d08302`.
+`git ls-remote origin refs/heads/arena/01a0d86e-ssl` returns the current HEAD.
+At the start of this audit the branch pointed at
+`407053be554a8730a5cac02fce9771e6f30fea23`, **not** at `8d08302` as the
+previous version of this report stated.
 
-> **Correction to a prior conclusion:** an earlier audit concluded that the
-> Phase 0 commits were lost and that the repository was documentation-only on
-> GitHub. That was wrong. `048e41c` was present on the remote and was fetched
-> and merged non-destructively rather than overwritten.
+## 3. Files changed in this audit
 
-## 3. Files added
+**Source (4 files):**
 
-**Build configuration (1):**
+- `src/sslv1/nodes/lamp_node.py` - fixed the `set_protection` field bug;
+  `protection` is now a property over the `ControlModel`'s single instance;
+  added the `RECORD_DELETED` audit event; populated
+  `Fault.related_event_ids`
+- `src/sslv1/nodes/group_controller.py` - added `SequenceTracker` and
+  duplicate/stale frame detection in `_handle_frame`; removed the dead
+  `NodeRegistration.last_fault` field and its now-unused import
+- `src/sslv1/configuration.py` - `storage_full_behaviour` now defaults to
+  `None` instead of naming an option
+- `src/sslv1/storage.py` - added the optional `on_delete` audit hook
+- `src/sslv1/notification.py` - `tick()` no longer re-enters `REMINDER_DUE`;
+  `SENT` removed from the escalation-eligible tuple
 
-- `pyproject.toml` - pytest configuration with `pythonpath = ["src", "."]`
+**Tests (5 files):**
 
-**Source, Phase 1 hardware-independent domain model (24 files):**
+- `tests/test_control.py` - 10 protection regression tests
+- `tests/test_group_controller.py` - 7 sequence/duplicate/replay tests
+- `tests/test_storage.py` - deletion-audit and retention tests
+- `tests/test_measurement.py` - `effective_mode` semantics tests
+- `tests/test_fault.py` - fault-to-event association tests and 4
+  notification-tick regression tests
 
-| File | Responsibility |
-| --- | --- |
-| `src/sslv1/__init__.py` | Public API re-exports |
-| `src/sslv1/enums.py` | All domain enumerations (message types, modes, states, classifications) |
-| `src/sslv1/errors.py` | Domain error hierarchy |
-| `src/sslv1/identity.py` | Identity hierarchy: site / group / node / lamp |
-| `src/sslv1/configuration.py` | Configuration objects with validation |
-| `src/sslv1/control.py` | Control model: safety > override > automatic mode > sensor/schedule |
-| `src/sslv1/measurement.py` | Measurement + validity |
-| `src/sslv1/diagnostics.py` | Expected-versus-actual diagnostic evidence and classification |
-| `src/sslv1/fault.py` | Fault model and fault lifecycle |
-| `src/sslv1/notification.py` | Independent notification state machine |
-| `src/sslv1/event.py` | Event model and event log |
-| `src/sslv1/command.py` | Command model, `CommandService`, authorization gate |
-| `src/sslv1/authorization.py` | Authorization roles and permission check |
-| `src/sslv1/time_model.py` | Logical clock, time state, synchronization state, uncertainty |
-| `src/sslv1/storage.py` | Storage record lifecycle and retention policy |
-| `src/sslv1/comm/__init__.py` | Communication layer public API |
-| `src/sslv1/comm/crc.py` | CRC-16 calculation |
-| `src/sslv1/comm/frame.py` | Frame encode/decode with SOF/version/addresses/type/length/payload/sequence/CRC |
-| `src/sslv1/comm/protocol.py` | Per-message-type payload codecs |
-| `src/sslv1/comm/state_machine.py` | Communication state machine (response matching, timeouts, retry) |
-| `src/sslv1/comm/bus.py` | Simulated multi-drop bus, addressing, duplicate handling |
-| `src/sslv1/nodes/__init__.py` | Node layer public API |
-| `src/sslv1/nodes/lamp_node.py` | Lamp Node behaviour |
-| `src/sslv1/nodes/group_controller.py` | Group Controller with abstract local storage/buffer |
+**Documentation (9 files):**
 
-**Tests (14 files):**
+- `README.md`, `docs/00_project_overview.md`,
+  `docs/02_product_requirements.md`, `docs/03_data_model.md`,
+  `docs/05_communication_architecture.md`, `docs/06_storage_and_logging.md`,
+  `docs/07_configuration.md`, `docs/12_engineering_decisions.md`,
+  `docs/review/README.md`, `docs/requirements_traceability.md`,
+  `docs/IMPLEMENTATION_REPORT.md`
 
-`tests/conftest.py`, `tests/test_identity.py`, `tests/test_control.py`,
-`tests/test_command.py`, `tests/test_measurement.py`, `tests/test_time.py`,
-`tests/test_configuration.py`, `tests/test_diagnostics.py`,
-`tests/test_fault.py`, `tests/test_storage.py`, `tests/test_comm.py`,
-`tests/test_group_controller.py`, `tests/test_scenarios.py`.
+## 4. Genuine issues found
 
-**Tooling (2):**
-
-- `.gitignore` - excludes `__pycache__`, build artefacts, virtualenvs, `node_modules`
-- `.markdownlint-cli2.jsonc` - markdownlint configuration
-
-**Documentation (18 files) - Phase 0, carried forward from `048e41c` and extended:**
-
-`docs/00_project_overview.md`, `01_system_architecture.md`,
-`02_product_requirements.md`, `03_data_model.md`,
-`04_fault_management.md`, `05_communication_architecture.md`,
-`06_storage_and_logging.md`, `07_configuration.md`,
-`08_testing_strategy.md`, `09_digital_prototype_scope.md`,
-`10_hardware_reference.md`, `11_assumptions.md`,
-`12_engineering_decisions.md`, `requirements_traceability.md`,
-`review/README.md`, `demo/README.md`.
-
-## 4. Files modified
-
-- `README.md` - §5 operating-mode model split into three subsections; §12
-  current-status table corrected to reflect reality
-- `docs/00_project_overview.md` - §7 split into persistent modes / temporary
-  override states / operator command / control model
-- `docs/02_product_requirements.md` - PR-LIGHT-005 design boundary;
-  per-requirement status lines aligned to the traceability matrix; status
-  vocabulary section added
-- `docs/05_communication_architecture.md` - §9 `CONFIRM` row corrected;
-  "Upload confirmation is not deletion" section added
-- `docs/06_storage_and_logging.md` - duplicate section numbers fixed (7.2 -> 7.3)
-- `docs/12_engineering_decisions.md` - D-007 operating-mode model; D-011
-  failed-verification return state made explicit; mode-resolution consequence row
-- `docs/review/README.md` - §5.3 persistent-mode count corrected; §5.5
-  conditions updated to record that implementation has begun
-- `src/sslv1/enums.py` - `OperatingMode` docstring corrected
-- `src/sslv1/nodes/lamp_node.py` - restored a function-local import deleted by
-  an unfinished edit; removed a redundant import
-
-## 5. Documentation corrections (Part 1, 14 items)
-
-All 14 items were incorporated and re-audited.
-
-| # | Item | Disposition |
+| # | Issue | Severity |
 | --- | --- | --- |
-| 1 | `RETURN_TO_AUTO` modelled as a persistent operating mode | **Fixed.** Persistent operating modes are now exactly `AUTO_SENSOR`, `AUTO_SCHEDULE_SENSOR`, `FIXED_SCHEDULE`. `FORCE_ON`/`FORCE_OFF` are temporary `active_override` states; `RETURN_TO_AUTO` is an operator command. Corrected in `README.md` §5, `docs/00` §7, D-007, PR-LIGHT-005, and the `OperatingMode` docstring. |
-| 2 | "Relay feedback" terminology coupled diagnostics to an undecided hardware assumption | **Verified correct.** Zero `relay_feedback` occurrences. The abstraction `switching_feedback` is used throughout (`docs/03`, `src/sslv1/measurement.py`, `src/sslv1/diagnostics.py`, PR-MEASURE-001). Assumption A-18 is worded as "a switching-feedback mechanism is available". |
-| 3 | Digital modelling implied validation of physical RTC behaviour | **Verified correct.** PR-TIME-001 carries an explicit digital-versus-physical boundary; PR-TIME-005 states physical RTC performance is not digitally validated; assumption A-26 is open. |
-| 4 | Upload confirmation implied deletion of the retained record | **Fixed.** `docs/05` §9 `CONFIRM` row corrected to "Upload confirmed"; an explicit "Upload confirmation is not deletion" section added. `docs/06` §9.3 states the same rule. |
-| 5 | Fault lifecycle conflated notification with fault state | **Verified correct.** Fault lifecycle is `NORMAL -> SUSPECTED -> CONFIRMED -> ACKNOWLEDGED -> UNDER_REPAIR -> VERIFYING -> CLOSED` (7 states). Notification state is a separate 7-state machine. `ESCALATED` is not a fault state. |
-| 6 | `NOTIFIED` was a fault lifecycle state | **Verified correct.** Notification state is independent: `NOT_REQUIRED`, `PENDING`, `SENT`, `ACK_PENDING`, `REMINDER_DUE`, `ESCALATED`, `DELIVERY_FAILED`. |
-| 7 | Retention policy without a hard minimum or authorized deletion | **Fixed and verified.** `docs/06` §7.1 documents the full retention policy model. Automatic deletion disabled by default. Deletion requires explicit authorization and produces an audit event. **No numeric retention period was invented**; A-29 remains open. |
-| 8 | No operator roles defined | **Verified correct.** PR-SECURITY-006 defines `VIEWER`, `OPERATOR`, `ENGINEER`, `ADMIN`, `OWNER` conceptually; the detailed permission matrix is explicitly deferred to A-27. |
-| 9 | Group Controller had no local storage/buffer capability | **Verified correct.** PR-SCALABILITY-005 specifies an abstract local storage/buffer; the physical medium is deliberately not selected (A-28). |
-| 10 | `RESET_ENERGY` as a distinct message type | **Fixed and verified.** `RESET_ENERGY` is a `CONTROL_COMMAND` subtype (PR-COMM-010, D-038, `docs/05` §5). |
-| 11 | `LAMP_LOAD` / `UNDER_CURRENT` treated as independent root causes | **Verified correct.** Fault category, diagnostic classification and confirmed physical root cause are separated (PR-FAULT-014, D-034). |
-| 12 | `REVIEW-000` recorded as pending | **Fixed.** Recorded as `APPROVED WITH REQUIRED CORRECTIVE ACTIONS` with 10 findings, corrective actions, dispositions, residual risks and remaining open assumptions. §5.5 records that implementation has begun and that no residual risk is discharged. |
-| 13 | README status did not reflect reality | **Fixed.** §5 and §12 rewritten. §12 now records the implemented source and the 266-test suite, and explicitly states that physical validation has not started. |
-| 14 | Contradictory phase / status references across documents | **Fixed.** All 88 requirement status lines in `docs/02` were stale (`Proposed - not implemented`) and contradicted the traceability matrix. They now match it exactly: 84 `VERIFIED (digital prototype)`, 1 `IMPLEMENTED (digital prototype)`, 3 `Proposed - not implemented` (the three inspection/physical-only requirements). |
+| 1 | `LampNode.set_protection()` wrote `self.protection.safe_state`, but `ProtectionState` declares `forced_state` and `ControlModel.decide()` reads `forced_state`. The write landed on a dynamically-created attribute that nothing ever read, so the requested protection state was silently ignored. Every existing protection test used `LampState.OFF`, which is also the default of `forced_state`, so the bug was invisible. | **Major** |
+| 2 | `PR-COMM-005` ("Sequence numbering, duplicate and replay handling", MUST) was marked `VERIFIED` with **no implementation at all**. No duplicate or out-of-window sequence detection existed anywhere. `comm/__init__.py` and `docs/05` section 6 both claimed the capability. The two tests cited as evidence (`test_unregistered_frame_is_rejected`, `test_message_type_codes_are_stable`) test addressing and code stability - neither touches a sequence number. | **Major** |
+| 3 | `PR-TIME-001` was marked `IMPLEMENTED` ("not yet covered by a named test") while a named test, `test_time.py::test_clock_is_deterministic_and_monotonic`, exists and passes. | Minor (under-claim) |
+| 4 | `Measurement.operating_mode` was ambiguous: it carried the **effective** mode, not the configured mode and not an override. `docs/03` section 4.2 also mislabelled `FORCE_ON`/`FORCE_OFF` as "persistent modes", and `docs/07` called the configuration field `operating_mode`. | Moderate |
+| 5 | `LampConfiguration.storage_full_behaviour` defaulted to `RAISE_CONDITION_ONLY` while `docs/06` records storage-full behaviour as an **open** decision (A-09) and the enum's own docstring says "no option is selected yet". A default that names an option reads as a decision. | Moderate |
+| 6 | `Fault.related_event_ids` is documented in `docs/03` section 5 as the fault-to-event association but was declared and never populated. | Moderate |
+| 7 | `NodeRegistration.last_fault` was declared, never assigned and never read - a genuinely dead field. | Minor |
+| 8 | Deletion of a retained record produced **no audit event**, although `PR-STORAGE-009` requires one and `docs/03` lists `RECORD_DELETED`. `RecordStore` has no event hook and nothing emitted the event. | Moderate |
+| 9 | `docs/06` had two sections numbered 7.2. | Minor |
+| 10 | `IMPLEMENTATION_REPORT.md` named `8d08302` as HEAD and described Phases 2-13 as "next", contradicting the README and the actual code. | Moderate |
+| 11 | Phase 7 (event / logging) has **no `PR-*` requirement identifiers of its own**. The event model is implemented and exercised, but the audit-trail requirement `PR-SECURITY-003` is formally verified at Phase 15/16. | Moderate (requirements-baseline gap) |
+| 12 | `NotificationEngine.tick()` raised `IllegalTransitionError` on `REMINDER_DUE -> REMINDER_DUE` whenever a confirmed fault stayed unacknowledged past `ack_reminder_interval_ticks` but before `escalation_timeout_ticks`. `LampNode.step()` calls `tick()` for every active confirmed fault on every cycle, so the node crashed on the **second** cycle after the reminder fired. Reachable, but the 295-test suite passed because no test stepped far enough past the reminder interval without acknowledging or escalating. | **Major** |
+| 13 | `tick()` listed `SENT` in its escalation-eligible state tuple, but the state machine allows only `SENT -> {ACK_PENDING, DELIVERY_FAILED}`. `SENT` is transient inside `notify()` (it moves `SENT -> ACK_PENDING` atomically), so no fault ever *rests* in `SENT`; the entry was therefore unreachable rather than live, but it made the code contradict its own table. | Minor (latent) |
 
-## 6. REVIEW-000 status
+## 5. Fixes made
 
-**`APPROVED WITH REQUIRED CORRECTIVE ACTIONS`**
+1. **Protection bug fixed at the source.** `LampNode.protection` is now a
+   read-only property returning `self.control.protection`, so the node can
+   never hold a second, divergent copy. `set_protection()` delegates to
+   `ControlModel.set_protection()`, which writes `forced_state` - the field
+   `decide()` reads. `_apply_restart_default()` clears the whole protection
+   state. The dead `safe_state` write is gone. Ten regression tests were added;
+   four of them fail against the old code (verified by temporarily restoring
+   the bug).
+2. **Duplicate/replay detection implemented.** `SequenceTracker` performs
+   16-bit wrap-aware classification (`new` / `duplicate` / `stale` / `invalid`)
+   per source address. `_handle_frame` checks it *before* payload decoding, so
+   a repeated or replayed frame is reported rather than reprocessed. It emits
+   `DUPLICATE_FRAME_DETECTED` and `STALE_FRAME_DETECTED`, which were previously
+   dead event types. A reported duplicate does not count as a communication
+   failure. Seven tests were added; four fail with the detection disabled.
+3. **Traceability corrected.** `PR-COMM-005` now cites the seven real sequence
+   tests and `group_controller.py (SequenceTracker, _handle_frame)`.
+   `PR-TIME-001` is `VERIFIED`. Counts are now 85 `VERIFIED` / 0 `IMPLEMENTED`
+   / 3 `PLANNED`, and `docs/02` per-requirement statuses were re-aligned.
+4. **Terminology made unambiguous.** `Measurement.operating_mode` is renamed
+   `effective_mode` everywhere in source, tests and the protocol payload keys,
+   with a docstring stating exactly which of the three values it carries.
+   `docs/03` section 4.2 now presents the canonical three-valued model
+   (`configured_mode` / `active_override` / `effective_mode`) and states that
+   `RETURN_TO_AUTO` is a command that appears in none of them. `docs/07` now
+   uses `configured_mode`. The legacy name survives only as an explicit
+   deprecation note.
+5. **A-09 left open.** `storage_full_behaviour` defaults to `None`.
+   `docs/06` gained section 7.4 stating that the store's raise-and-refuse
+   behaviour is a simulation implementation detail, not an engineering
+   decision, and must not be read as closing A-09.
+6. **Documented association made real.** `_on_fault_event` appends each
+   emitted event's id to `fault.related_event_ids` (deduplicated).
+7. **Dead field removed** (`NodeRegistration.last_fault`) along with its
+   import.
+8. **Deletion is audited.** `RecordStore` takes an optional `on_delete`
+   hook; `LampNode` wires it to emit `RECORD_DELETED` naming the actor and the
+   record.
+9. **Section numbering fixed** in `docs/06`.
+10. **Phase status reconciled** - see section 6.
+11. **Notification crash fixed.** `tick()` now returns without attempting a
+    transition when a fault is already in `REMINDER_DUE`: re-entering the state
+    is illegal, and re-emitting on every cycle would flood the event log. The
+    only ways out of `REMINDER_DUE` are acknowledgement, delivery failure and
+    escalation, all of which are handled elsewhere. `SENT` was removed from the
+    escalation-eligible tuple because `notify()` never leaves a fault resting in
+    `SENT`. Four regression tests were added
+    (`test_notification_reminder_is_idempotent`,
+    `test_notification_reminder_does_not_spam_events`,
+    `test_notification_escalates_after_timeout_without_crash`,
+    `test_notification_tick_is_legal_from_every_resting_state`); the last one
+    exercises `tick()` from every resting state. Restoring either defect makes
+    the suite fail, which was verified by mutation.
 
-All 10 corrective actions (RC-01 to RC-10) are implemented and re-audited. The
-review record is not stated as a full approval, and it explicitly does not
-claim that all engineering decisions are final. Residual risks are recorded as
-open: physical RTC backup duration (A-26), numeric retention period (A-29),
-storage-full behaviour (A-09), switching-feedback mechanism existence (A-18),
-and the deferred role permission matrix (A-27).
+## 6. Phase 1-13 audited status
 
-## 7. Phase 1 status
+The audit mapped every requirement to the phase its own *verification method*
+names, then checked each against real implementation modules and real tests.
+A phase is `COMPLETE (digital prototype)` only when **every** requirement the
+digital prototype can satisfy is `VERIFIED`.
 
-**Complete (digital prototype).** The hardware-independent domain model is
-implemented in `src/sslv1/` and verified by 266 deterministic tests.
+| Phase | Name | Reqs | Verified | Status | Implementation | Tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Core domain model | 1 | 1 | **COMPLETE (digital prototype)** | `enums.py`, `identity.py`, `authorization.py`, `time_model.py`, `configuration.py`, `errors.py` | `test_identity.py`, `test_time.py`, `test_command.py`, `test_configuration.py` |
+| 2 | Lamp Node | 3 | 3 | **COMPLETE (digital prototype)** | `nodes/lamp_node.py`, `nodes/__init__.py` | `test_group_controller.py`, `test_control.py`, `test_scenarios.py` |
+| 3 | Lighting control | 7 | 7 | **COMPLETE (digital prototype)** | `control.py` | `test_control.py`, `test_scenarios.py` |
+| 4 | Measurement model | 4 | 4 | **COMPLETE (digital prototype)** | `measurement.py` | `test_measurement.py`, `test_scenarios.py` |
+| 5 | Diagnostics | 8 | 8 | **COMPLETE (digital prototype)** | `diagnostics.py` | `test_diagnostics.py`, `test_scenarios.py` |
+| 6 | Fault lifecycle | 17 | 17 | **COMPLETE (digital prototype)** | `fault.py`, `notification.py` | `test_fault.py`, `test_scenarios.py` |
+| 7 | Event / logging | 1 | 1 | **COMPLETE (digital prototype)** | `event.py` | `test_scenarios.py`, `test_command.py`, `test_fault.py` |
+| 8 | Persistent storage simulation | 10 | 10 | **COMPLETE (digital prototype)** | `storage.py` | `test_storage.py`, `test_scenarios.py` |
+| 9 | RS-485 protocol | 10 | 10 | **COMPLETE (digital prototype)** | `comm/` (`crc.py`, `frame.py`, `protocol.py`, `state_machine.py`, `bus.py`) | `test_comm.py`, `test_group_controller.py` |
+| 10 | Group Controller | 4 | 4 | **COMPLETE (digital prototype)** | `nodes/group_controller.py` | `test_group_controller.py` |
+| 11 | Communication failure / recovery | 6 | 6 | **COMPLETE (digital prototype)** | `comm/state_machine.py`, `comm/bus.py`, `nodes/group_controller.py` | `test_group_controller.py`, `test_scenarios.py` |
+| 12 | Configuration | 8 | 8 | **COMPLETE (digital prototype)** | `configuration.py`, `nodes/group_controller.py` (`distribute_configuration`) | `test_configuration.py`, `test_group_controller.py` |
+| 13 | Multi-node simulation | 4 | 4 | **COMPLETE (digital prototype)** | `nodes/group_controller.py`, `comm/bus.py`, `nodes/lamp_node.py` | `test_group_controller.py`, `test_scenarios.py` |
 
-| Model | Where | Status |
+**Result: Phases 1-13 are all COMPLETE (digital prototype).** The previous
+version of this report was wrong to say "Phase 2 is next".
+
+Phase-level notes:
+
+- **Phase 7 (event / logging):** no `PR-*` requirement identifiers are
+  assigned to this phase. The event model and logging are implemented and
+  exercised, but the audit-trail requirement `PR-SECURITY-003` is formally
+  verified at Phase 15/16. This is a **requirements-baseline gap**, not an
+  implementation gap, and is recorded as an open engineering issue.
+- **Phase 14 and Phase 18** hold the three `PLANNED` requirements
+  (`PR-SECURITY-004`, `PR-SECURITY-005`, `PR-TIME-005`), all of which are
+  physical or inspection-only.
+
+## 7. Requirement verification summary
+
+| Status | Count | Meaning |
 | --- | --- | --- |
-| Identity hierarchy | `identity.py` | Implemented, tested |
-| Configured mode / active override / effective mode | `control.py`, `enums.py` | Implemented, tested |
-| Commanded / actual state | `measurement.py`, `enums.py` | Implemented, tested |
-| Measurement + validity | `measurement.py` | Implemented, tested |
-| Diagnostic evidence + classification | `diagnostics.py` | Implemented, tested |
-| Fault + lifecycle | `fault.py` | Implemented, tested |
-| Notification state (independent) | `notification.py` | Implemented, tested |
-| Event | `event.py` | Implemented, tested |
-| Command | `command.py` | Implemented, tested |
-| Configuration | `configuration.py` | Implemented, tested |
-| Authorization role | `authorization.py` | Implemented, tested |
-| Time state | `time_model.py` | Implemented, tested |
-| Storage record lifecycle | `storage.py` | Implemented, tested |
-| Communication state | `comm/state_machine.py` | Implemented, tested |
-| Lamp Node | `nodes/lamp_node.py` | Implemented, tested |
-| Group Controller | `nodes/group_controller.py` | Implemented, tested |
+| `VERIFIED` | 85 | Implemented in `src/sslv1/` and covered by a deterministic test that passes. Digital prototype only. |
+| `IMPLEMENTED` | 0 | - |
+| `PLANNED` | 3 | Physical-only or inspection-only: `PR-SECURITY-004` (tamper detection, needs a physical tamper source), `PR-SECURITY-005` (security validation boundary, inspection), `PR-TIME-005` (physical RTC performance, inspection). |
 
-**Control model** implements safety > authorized override > automatic mode >
-sensor/schedule, with `light <= ON` -> ON, `light >= OFF` -> OFF, between ->
-retain; `ON >= OFF` is rejected; no automatic OFF on an unacknowledged
-notification.
+Total: 88 requirements. No physical-only requirement is marked digitally
+verified.
 
-**Command model** implements `COMMAND_SENT`, `RECEIVED`, `EXECUTED`,
-`ACKNOWLEDGED`, `ACTUAL_STATE_VERIFIED`, duplicate `command_id` suppression, an
-authorization gate, actor, timestamp and execution/verification results. A
-command is never successful merely because it was received.
+## 8. Test command actually executed
 
-**Measurement model** carries explicit validity; measurements are engineering
-monitoring values and are asserted never to be billing grade.
+```text
+python3 -m pytest
+```
 
-**Diagnostic model** provides 13 classifications (requirement was at least 10)
-and makes no root-cause claims from symptoms alone.
+run from the repository root, with `pytest` 9.1.1 and
+`pythonpath = ["src", "."]` from `pyproject.toml`.
 
-**Fault model** uses configurable confirmation count, confirmation window,
-latching and hysteresis. No "two readings" value is hardcoded.
+## 9. Exact test result
 
-**Storage model** keeps the pending-upload queue separate from retained
-history. Automatic deletion is disabled by default. Upload confirmation never
-implies deletion.
+**299 passed, 0 failed, 0 skipped, 0 errors.**
 
-**Communication model** uses a frame with SOF, protocol version, source
-address, destination address, message type, payload length, payload, sequence
-number and CRC, across all 17 documented message types, with addressing,
-sequence and duplicate handling, CRC checking, response matching, timeouts and
-retry.
+Test counts by module:
 
-**Group Controller** has a configurable node count with a default target of 16
-and an abstract local storage/buffer. One node failure does not bring down the
-group.
-
-## 8. Source files
-
-24 files under `src/sslv1/`, listed in section 3. The domain layer imports
-stdlib only - **zero external runtime dependencies**.
-
-## 9. Tests created
-
-14 files under `tests/`: `conftest.py` plus 12 focused modules and
-`test_scenarios.py` (50 numbered end-to-end scenarios).
-
-| Test module | Tests |
+| Module | Tests |
 | --- | --- |
 | `test_scenarios.py` | 50 |
+| `test_control.py` | 35 |
 | `test_comm.py` | 29 |
-| `test_control.py` | 25 |
-| `test_fault.py` | 23 |
+| `test_group_controller.py` | 27 |
+| `test_storage.py` | 23 |
 | `test_diagnostics.py` | 23 |
-| `test_group_controller.py` | 20 |
+| `test_fault.py` | 29 |
+| `test_measurement.py` | 21 |
+| `test_configuration.py` | 19 |
 | `test_time.py` | 19 |
-| `test_measurement.py` | 18 |
-| `test_storage.py` | 18 |
-| `test_configuration.py` | 17 |
 | `test_command.py` | 13 |
 | `test_identity.py` | 11 |
 
-## 10. Tests executed
+The suite is deterministic: no `time.time`, `time.monotonic`, `time.sleep`,
+`random`, `os.environ`, `datetime.now` or `uuid` appears anywhere in `tests/`.
 
-`python3 -m pytest` from the repository root, with `pytest` 9.1.1 and
-`pythonpath = ["src", "."]` from `pyproject.toml`.
+## 10. Static / lint result
 
-## 11. Test result
+- `python3 -m pyflakes` over `src/` and `tests/`: only three intentional
+  re-export notices remain (`__init__.py` star re-exports of `.enums.*` and
+  `.errors.*`, and a duplicate `MessageType` re-export in `comm/__init__.py`).
+  No unused imports, no undefined names, no redefinitions.
+- `npx markdownlint-cli2 "docs/**/*.md" "README.md"`: **0 issues**.
+- `python3 -c "import ast; ast.parse(...)"` over every changed file: syntax OK.
+- A scripted consistency check confirms every cited test and module in the
+  traceability matrix exists, and that the 88 requirement statuses in
+  `docs/02` match the traceability matrix exactly.
 
-**266 passed, 0 failed, 0 skipped, 0 errors.**
+## 11. Remaining open assumptions
 
-`python3 -m pyflakes` over `src/` and `tests/` reports only three
-re-export notices in `__init__.py` files (`.enums.*`, `.errors.*` star
-re-exports and a duplicate `MessageType` re-export), which are intentional
-public-API re-exports.
-
-`npx markdownlint-cli2 "docs/**/*.md" "README.md"` reports **0 issues**.
-
-Determinism was audited: no test uses `time.time`, `time.monotonic`,
-`time.sleep`, `random`, `os.environ`, `datetime.now` or `uuid`.
-
-## 12. Requirements implemented
-
-88 requirements are defined in `docs/02_product_requirements.md`. 85 are
-implemented in `src/sslv1/` (84 `VERIFIED`, 1 `IMPLEMENTED`).
-
-## 13. Requirements digitally verified
-
-**84 of 88** are marked `VERIFIED` in `docs/requirements_traceability.md`,
-each with a named test in `tests/`. 106 test references and 20 module
-references were checked to exist; none are missing.
-
-The 3 not implemented are the physical and inspection-only requirements:
-
-- `PR-SECURITY-004` - tamper detection (requires a physical tamper source)
-- `PR-SECURITY-005` - security validation boundary (inspection)
-- `PR-TIME-005` - physical RTC performance (inspection)
-
-**No physical requirement is marked digitally verified.** `VERIFIED` here
-means deterministic digital prototype behaviour only.
-
-## 14. Remaining requirements
-
-The 3 requirements above remain unimplemented because they are physical or
-inspection-only. All other Phase 14-18 requirements remain open because their
-phases have not started: fault injection, Master Control Center data layer,
-full integration, system validation and the engineering audit.
-
-## 15. Remaining assumptions
-
-29 assumptions are registered in `docs/11_assumptions.md`, of which the
-following remain **open** and are the highest-impact items:
+29 assumptions are registered in `docs/11_assumptions.md`. The following remain
+**open** and are the highest-impact items:
 
 | Assumption | Impact |
 | --- | --- |
-| A-09 | Storage-full behaviour undecided (stop / overwrite / buffer) - must be resolved before Phase 8 storage design is frozen |
-| A-18 | A switching-feedback mechanism is assumed to exist - if none exists, `PR-DIAG-003` and `PR-DIAG-004` must be revised |
-| A-26 | Physical RTC backup duration unmeasured |
-| A-27 | Detailed role permission matrix deferred to a security design phase |
-| A-29 | Numeric retention period and hard minimum retention undecided |
+| A-09 | Storage-full behaviour undecided (stop recording / overwrite oldest / buffer in memory). Must be resolved before Phase 8 storage design is frozen. The code raises `StorageFullError` as a simulation detail only. |
+| A-18 | A switching-feedback mechanism is assumed to exist. If none exists, `PR-DIAG-003` and `PR-DIAG-004` must be revised. Highest-impact assumption in the diagnostics area. |
+| A-26 | Physical RTC backup duration unmeasured. |
+| A-27 | Detailed role permission matrix deferred to a security design phase. |
+| A-29 | Numeric retention period and hard minimum retention undecided. No numeric value is invented; the defaults are `automatic_deletion = False` and `minimum_retention_ticks = None`. |
 
-## 16. Remaining hardware / physical validation items
+## 12. Remaining physical-only validation
 
-None of these are validated by the digital prototype, and none are claimed:
+None of the following is validated by the digital prototype, and none is
+claimed:
 
 - Mains safety, PCB safety, galvanic isolation
 - Creepage and clearance
@@ -293,38 +264,38 @@ None of these are validated by the digital prototype, and none are claimed:
 - Enclosure sealing and IP rating
 - Actual RF / radio behaviour
 - Product certification
-- **Actual RTC backup duration**
-- Tamper detection using a physical tamper source
+- **Physical RTC backup duration**
+- **Physical tamper sensing**
 
-## 17. Engineering issues discovered
+## 13. Unresolved engineering issues
 
-| Issue | Resolution |
+| Issue | Status |
 | --- | --- |
-| An unfinished edit had deleted the function-local `encode_payload` import in `LampNode._respond`, causing a `NameError` and 16 test failures. | Import restored; 266 tests pass. |
-| A redundant `encode_payload` import in `LampNode._handle_control_command`. | Removed. |
-| All 88 requirement status lines read `Proposed - not implemented`, contradicting the traceability matrix. | Aligned to the matrix; status vocabulary documented. |
-| `docs/06` had two sections numbered 7.2. | Renumbered to 7.2 / 7.3. |
-| `docs/05` said `CONFIRM` meant "buffered records released", which reads as deletion. | Corrected to "Upload confirmed" and supplemented with an explicit non-deletion section. |
-| D-011 did not state the return state after a failed verification. | Made `VERIFYING -> UNDER_REPAIR` an explicit decision with rationale; a return to `CONFIRMED` is rejected. |
-| `docs/review/README.md` §5.3 listed 5 persistent operating modes including `FORCE_ON`/`FORCE_OFF`. | Corrected to 3. |
-| A merge was required because the remote branch held `048e41c`. | Merged non-destructively with `-X ours`; no force push, no history rewrite, no branch deletion. The resulting tree is byte-identical to the pre-merge tree, so nothing was lost. |
-| `__pycache__` directories were about to be committed. | `.gitignore` added; staged artefacts removed. |
+| Phase 7 has no `PR-*` requirement identifiers of its own; the audit-trail requirement is formally verified at Phase 15/16. | **Open.** A requirements-baseline gap, not an implementation gap. Recommend adding event/logging requirements or re-pointing `PR-SECURITY-003`. |
+| A-09 (storage-full behaviour) | Open. The code's behaviour is documented as a simulation detail. |
+| A-18 (switching-feedback mechanism) | Open. If no mechanism exists, `PR-DIAG-003`/`PR-DIAG-004` need revision. |
+| A-29 (numeric retention) | Open. |
+| A-26 (RTC backup duration) | Open. |
+| A-27 (role permission matrix) | Open, accepted for V1. |
+| `NotificationEngine.notify()` lists `REMINDER_DUE`, `ESCALATED` and `DELIVERY_FAILED` as sources for `SENT`, but the state machine allows none of them (`SENT` is reachable only from `PENDING`). Currently unreachable because `LampNode.step()` only calls `notify()` on newly confirmed faults and `delivery_failed()` routes retries through `PENDING`. | **Open (latent).** Any future caller that re-notifies a fault already in one of those states will raise `IllegalTransitionError`. Closing it needs a decision on whether re-notification after escalation is permitted at all; that decision is deliberately **not** invented here. |
 
-**No genuine engineering decision, missing physical information, external
-credential or purchase requirement blocked the work.** No hardware, software,
-instrument or service purchase is required for anything delivered here.
+**No unresolved engineering decision, missing physical information, external
+credential or purchase requirement blocked this audit.** No hardware,
+software, instrument or service purchase is required for anything delivered
+here.
 
-## 18. Next phase
+## 14. Exact next phase
 
-**Phase 2 - Lamp Node** is the next phase in the mandatory engineering
-sequence. It is partially anticipated by the existing
-`src/sslv1/nodes/lamp_node.py`, which already implements node-level behaviour
-in the digital prototype; Phase 2 formalises it against the Lamp Node
-requirements with the Phase 2 audit.
+**Phase 14 - Fault injection** is the first genuinely incomplete phase.
 
-Phases 14-18 remain open, in order: fault injection, Master Control Center
-data layer (no GUI), full integration, system validation and the engineering
-audit.
+Phases 1-13 are complete as digital prototypes and must not be rebuilt merely
+because the original plan called Phase 2 "next". Phase 14 introduces
+deterministic fault injection and recovery behaviour, and is also where
+`PR-SECURITY-004` (tamper detection) is scheduled - which requires a physical
+tamper source and therefore cannot be completed digitally.
+
+After Phase 14: Phase 15 (Master Control Center data layer, no GUI), Phase 16
+(full integration), Phase 17 (system validation), Phase 18 (engineering audit).
 
 The mandatory sequence is unchanged:
 

@@ -200,3 +200,21 @@ def test_configuration_is_immutable_once_validated(lamp_identity):
     config = make_lamp_config(lamp_identity.lamp_id).validated()
     with pytest.raises(Exception):
         config.light_on_threshold = 999.0
+
+
+# --------------------------------------------------------------------------
+# open-decision guard: A-09 (storage-full behaviour) must stay undecided
+# --------------------------------------------------------------------------
+def test_storage_full_behaviour_defaults_to_undecided(lamp_config):
+    """A configuration field must not imply a decision that is still open."""
+    from sslv1.configuration import StorageFullBehaviour
+
+    assert lamp_config.storage_full_behaviour is None
+    # The enum still exists so the abstraction stays explicit.
+    assert len(list(StorageFullBehaviour)) >= 3
+
+
+def test_retention_defaults_invent_no_duration(lamp_config):
+    """A-29: no numeric retention period may be invented by a default."""
+    assert lamp_config.automatic_deletion is False
+    assert lamp_config.minimum_retention_ticks is None

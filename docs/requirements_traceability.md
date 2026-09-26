@@ -26,6 +26,12 @@ passes. `VERIFIED` is a **digital prototype** verification only. It never means
 that a physical property (electrical safety, EMC, RF, thermal, enclosure/IP,
 relay lifetime, RTC backup duration or certification) has been validated.
 
+The counts above were verified by script rather than by hand: each `PR-*` row
+was parsed, each named test was checked against `pytest --collect-only`, and
+each named module was checked to exist on disk. A requirement whose cited test
+does not actually exercise it is a defect, not a status - see `PR-COMM-005`,
+which was corrected in this revision.
+
 ## 3. Status definitions
 
 | Status | Meaning |
@@ -38,8 +44,8 @@ relay lifetime, RTC backup duration or certification) has been validated.
 
 | Status | Count |
 | --- | --- |
-| `VERIFIED` | 84 |
-| `IMPLEMENTED` | 1 |
+| `VERIFIED` | 85 |
+| `IMPLEMENTED` | 0 |
 | `PLANNED` | 3 |
 
 Reproduce with `python3 -m pytest` from the repository root. The suite is
@@ -65,7 +71,7 @@ deterministic: no wall-clock time, no randomness, no hardware access.
 | `PR-COMM-002` | Node addressing and group size | RS-485 field bus / Group Controller | src/sslv1/identity.py (BusAddress), src/sslv1/nodes/group_controller.py (register_node) | test_group_controller.py::test_group_controller_supports_the_initial_group_target, ::test_group_controller_is_not_limited_to_sixteen; test_scenarios.py::test_scenario_47_group_controller_capacity, ::test_scenario_48_duplicate_registration_is_rejected | `VERIFIED` |
 | `PR-COMM-003` | Frame format | RS-485 field bus / Group Controller | src/sslv1/comm/frame.py (Frame, encode_frame, decode_frame) | test_comm.py::test_frame_contains_every_required_field, ::test_frame_round_trip, ::test_bad_start_of_frame_is_rejected, ::test_unknown_message_type_code_is_rejected, ::test_address_range_is_enforced | `VERIFIED` |
 | `PR-COMM-004` | Initial message type set | RS-485 field bus / Group Controller | src/sslv1/enums.py (MessageType, 17 values) | test_comm.py::test_message_type_set_is_complete | `VERIFIED` |
-| `PR-COMM-005` | Sequence numbering, duplicate and replay handling | RS-485 field bus / Group Controller | src/sslv1/comm/protocol.py + src/sslv1/nodes/group_controller.py (sequence tracking) | test_group_controller.py::test_unregistered_frame_is_rejected; test_comm.py::test_message_type_codes_are_stable | `VERIFIED` |
+| `PR-COMM-005` | Sequence numbering, duplicate and replay handling | RS-485 field bus / Group Controller | `src/sslv1/nodes/group_controller.py` (`SequenceTracker`, `_handle_frame`) | `test_group_controller.py::test_increasing_sequence_numbers_are_accepted`; `test_group_controller.py::test_duplicate_frame_is_detected_and_reported`; `test_group_controller.py::test_duplicate_is_reported_not_processed`; `test_group_controller.py::test_out_of_window_sequence_is_reported_as_stale`; `test_group_controller.py::test_sequence_wraparound_is_handled`; `test_group_controller.py::test_sequence_tracking_is_per_source`; `test_group_controller.py::test_duplicate_detection_does_not_disturb_communication_state` | `VERIFIED` |
 | `PR-COMM-006` | CRC integrity verification | RS-485 field bus / Group Controller | src/sslv1/comm/crc.py, src/sslv1/comm/frame.py | test_comm.py::test_crc_failure_is_detected, ::test_bus_corruption_is_detectable | `VERIFIED` |
 | `PR-COMM-007` | Polling, timeout and retry policy | RS-485 field bus / Group Controller | src/sslv1/nodes/group_controller.py (poll, poll_timeout_ticks, poll_retry_count) | test_group_controller.py::test_communication_fault_is_detected_after_retries | `VERIFIED` |
 | `PR-COMM-008` | Communication state machine | RS-485 field bus / Group Controller | src/sslv1/comm/state_machine.py (CommunicationStateMachine) | test_comm.py::test_healthy_to_retry_to_degraded_to_fault, ::test_recovery_returns_to_healthy, ::test_retry_recovers_to_healthy | `VERIFIED` |
@@ -118,7 +124,7 @@ deterministic: no wall-clock time, no randomness, no hardware access.
 | `PR-FAULT-005` | Configurable fault confirmation | Fault management (Lamp Node) | src/sslv1/fault.py (ConfirmationPolicy, FaultEngine.observe) | test_fault.py::test_fault_is_confirmed_only_after_configured_count, ::test_confirmation_count_is_configurable; test_scenarios.py::test_scenario_28_fault_confirmation_count | `VERIFIED` |
 | `PR-FAULT-006` | Fault latching and hysteresis | Fault management (Lamp Node) | src/sslv1/fault.py (latching in observe), src/sslv1/configuration.py (confirmation window) | test_fault.py::test_confirmed_fault_latches_against_a_single_normal_measurement, ::test_threshold_oscillation_creates_one_fault_not_many; test_scenarios.py::test_scenario_29_fault_latching | `VERIFIED` |
 | `PR-FAULT-007` | Fault notification | Fault management (Lamp Node) | src/sslv1/notification.py (NotificationEngine) | test_fault.py::test_not_required_when_ack_not_configured | `VERIFIED` |
-| `PR-FAULT-008` | Acknowledgement, reminder and escalation | Fault management (Lamp Node) | src/sslv1/notification.py (tick, acknowledge, delivery failure handling) | test_fault.py::test_reminder_and_escalation_do_not_change_fault_state, ::test_notification_failure_is_retried_then_reported | `VERIFIED` |
+| `PR-FAULT-008` | Acknowledgement, reminder and escalation | Fault management (Lamp Node) | src/sslv1/notification.py (tick, acknowledge, delivery failure handling) | test_fault.py::test_reminder_and_escalation_do_not_change_fault_state, ::test_notification_failure_is_retried_then_reported, ::test_notification_reminder_is_idempotent, ::test_notification_reminder_does_not_spam_events, ::test_notification_escalates_after_timeout_without_crash, ::test_notification_tick_is_legal_from_every_resting_state | `VERIFIED` |
 | `PR-FAULT-009` | Unacknowledged alerts must not switch the lamp OFF | Fault management (Lamp Node) | src/sslv1/nodes/lamp_node.py (no notification-to-lighting coupling) | test_scenarios.py::test_scenario_30_fault_acknowledgement_does_not_dim_the_light | `VERIFIED` |
 | `PR-FAULT-010` | Repair workflow | Fault management (Lamp Node) | src/sslv1/fault.py (acknowledge, start_repair, report_repaired) | test_fault.py::test_repair_workflow, ::test_repair_cannot_start_before_acknowledgement | `VERIFIED` |
 | `PR-FAULT-011` | Verification workflow and failed verification | Fault management (Lamp Node) | src/sslv1/fault.py (verify) | test_fault.py::test_successful_verification_closes_the_fault, ::test_failed_verification_returns_to_an_active_fault_state; test_scenarios.py::test_scenario_32_failed_verification_reopens_the_fault | `VERIFIED` |
@@ -194,7 +200,7 @@ deterministic: no wall-clock time, no randomness, no hardware access.
 
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
-| `PR-TIME-001` | RTC-backed local timekeeping | Time model (Lamp Node / Group Controller) | src/sslv1/time_model.py (LogicalClock, TimeModel) - logical only | test_time.py::test_clock_is_deterministic_and_monotonic | `IMPLEMENTED` |
+| `PR-TIME-001` | RTC-backed local timekeeping | Time model (Lamp Node / Group Controller) | src/sslv1/time_model.py (LogicalClock, TimeModel) - logical only | test_time.py::test_clock_is_deterministic_and_monotonic | `VERIFIED` |
 | `PR-TIME-002` | Offline timestamps with validity indication | Time model (Lamp Node / Group Controller) | src/sslv1/time_model.py (Timestamp.sync_state, TimeModel.uncertain) | test_scenarios.py::test_scenario_41_offline_timestamps_are_uncertain; test_group_controller.py::test_offline_timestamps_are_flagged_uncertain | `VERIFIED` |
 | `PR-TIME-003` | Time synchronization | Time model (Lamp Node / Group Controller) | src/sslv1/nodes/group_controller.py (synchronize_time), src/sslv1/nodes/lamp_node.py (time-sync handler) | test_scenarios.py::test_scenario_40_time_synchronization; test_group_controller.py::test_time_synchronization_reaches_every_node | `VERIFIED` |
 | `PR-TIME-004` | Time-uncertainty handling and recovery | Time model (Lamp Node / Group Controller) | src/sslv1/time_model.py (_refresh_uncertainty, mark_unsynchronized) | test_time.py::test_time_becomes_uncertain_after_the_threshold | `VERIFIED` |

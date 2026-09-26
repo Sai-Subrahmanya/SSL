@@ -30,7 +30,7 @@ This document defines the parameter set, not the scope assignment.
 
 | Parameter | Description | Type |
 | --- | --- | --- |
-| `operating_mode` | Configured operating mode. | enum |
+| `configured_mode` | Persistent automatic mode (see [03_data_model.md](03_data_model.md#4-2-value-domains)). | enum |
 | `light_on_threshold` | Light level below which the lamp switches ON. | quantity |
 | `light_off_threshold` | Light level above which the lamp switches OFF. | quantity |
 | `hysteresis` | Hysteresis applied to light thresholds. | quantity |
@@ -94,7 +94,7 @@ This document defines the parameter set, not the scope assignment.
 
 | Parameter group | Default status |
 | --- | --- |
-| `operating_mode` | To be defined in Phase 3 design. |
+| `configured_mode` | Not specified in this document; site configuration (`AUTO_SENSOR` in the digital prototype fixture). |
 | Thresholds and hysteresis | **No default values are specified in this document.** Values are site configuration. |
 | `retention_policy` | Automatic deletion **disabled** (`PR-STORAGE-005`). |
 | `minimum_retention` | **Undecided** - open assumption (A-29). |

@@ -1133,7 +1133,7 @@ historical record (`PR-STORAGE-009`).
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 2)
-- **Status:** IMPLEMENTED (digital prototype)
+- **Status:** VERIFIED (digital prototype)
 
 **Requirement.**
 Each lamp node shall maintain local time using a real-time clock that

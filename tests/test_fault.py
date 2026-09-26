@@ -477,3 +477,127 @@ def test_one_nodes_fault_does_not_affect_another_node(clock, bus, authorizer,
     assert node_b.faults.active_faults == ()
     assert node_b.control.lamp_is_on is True
     assert node_b.snapshot()["effective_mode"] == "AUTO_SENSOR"
+
+
+# --------------------------------------------------------------------------
+# fault -> event association is real, not just declared
+# --------------------------------------------------------------------------
+def test_fault_records_its_related_event_ids(lamp_node):
+    """The association documented in 03_data_model.md section 5 is populated."""
+    for index in range(5):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    fault = lamp_node.faults.active_faults[0]
+    assert fault.related_event_ids, "fault must reference its own events"
+
+    recorded = {e.event_id for e in lamp_node.events}
+    assert set(fault.related_event_ids).issubset(recorded)
+
+    related = [e for e in lamp_node.events if e.related_fault_id == fault.fault_id]
+    assert related
+    assert {e.event_id for e in related} >= set(fault.related_event_ids)
+
+
+def test_related_event_ids_are_not_duplicated(lamp_node):
+    """Re-observing the same fault must not append the same event twice."""
+    for index in range(8):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    fault = lamp_node.faults.active_faults[0]
+    assert len(fault.related_event_ids) == len(set(fault.related_event_ids))
+
+
+# --------------------------------------------------------------------------
+# notification tick() must never attempt an illegal transition
+#
+# Regression: a fault left unacknowledged past the reminder interval but
+# before the escalation timeout made NotificationEngine.tick() re-enter
+# REMINDER_DUE, which the state machine forbids. LampNode.step() calls tick()
+# for every active confirmed fault on every cycle, so the run crashed with
+# IllegalTransitionError. The suite passed because no test stepped far enough
+# past the reminder interval without acknowledging or escalating.
+# --------------------------------------------------------------------------
+def test_notification_reminder_is_idempotent(lamp_node):
+    """Stepping repeatedly inside the reminder window must not crash."""
+    for index in range(6):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    fault = lamp_node.faults.active_faults[0]
+    assert fault.notification_state.value == "ACK_PENDING"
+
+    # Cross the reminder interval, then keep stepping well inside the
+    # escalation window. Every one of these used to raise.
+    for ticks in range(40_000, 120_000, 5_000):
+        lamp_node.step(healthy_sources(light_level=10.0), ticks=ticks)
+
+    assert fault.notification_state.value == "REMINDER_DUE"
+    assert lamp_node.control.lamp_is_on is True
+    assert fault.state.value == "CONFIRMED"
+
+
+def test_notification_reminder_does_not_spam_events(lamp_node):
+    """A repeated reminder window must not emit a reminder per tick."""
+    for index in range(6):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    assert lamp_node.faults.active_faults, "expected an active fault"
+    for ticks in range(40_000, 120_000, 5_000):
+        lamp_node.step(healthy_sources(light_level=10.0), ticks=ticks)
+
+    reminders = [
+        e for e in lamp_node.events
+        if e.event_type.value == "FAULT_REMINDER_DUE"
+    ]
+    assert len(reminders) == 1, "reminder emitted %d times" % len(reminders)
+
+
+def test_notification_escalates_after_timeout_without_crash(lamp_node):
+    """A long unacknowledged run must escalate, not crash."""
+    for index in range(6):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    fault = lamp_node.faults.active_faults[0]
+    for ticks in range(20_000, 400_000, 10_000):
+        lamp_node.step(healthy_sources(light_level=10.0), ticks=ticks)
+
+    assert fault.notification_state.value == "ESCALATED"
+    assert fault.state.value == "CONFIRMED"
+    assert lamp_node.control.lamp_is_on is True
+
+
+def test_notification_tick_is_legal_from_every_resting_state(lamp_node):
+    """tick() must never raise for any state the engine can rest in."""
+    from sslv1.enums import NotificationState
+    from sslv1.notification import NotificationEngine
+
+    for index in range(6):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    fault = lamp_node.faults.active_faults[0]
+
+    for resting in NotificationState:
+        if resting is NotificationState.NOT_REQUIRED:
+            continue
+        engine = NotificationEngine(lamp_node.config)
+        fault.notification_state = resting
+        for elapsed in (0, 1, 30_000, 120_000, 500_000):
+            engine._last_notified[fault.fault_id] = 0
+            engine.tick(fault, ticks=elapsed)  # must not raise

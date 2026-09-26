@@ -78,7 +78,7 @@ group-scoped value and is not a substitute for `lamp_id`
 | `site_id` | identifier | Owning site. |
 | `group_id` | identifier | Owning group. |
 | `lamp_id` | identifier | Owning lamp. |
-| `operating_mode` | enum | Current operating mode (see 4.2). |
+| `effective_mode` | enum | Effective mode in force when the snapshot was taken, including any active override (see 4.2). |
 | `commanded_state` | enum | State commanded by the system. |
 | `switching_feedback` | enum | Observed state of the switching path. Physical implementation is a hardware-design decision. |
 | `actual_state` | enum | Observed state derived from evidence. |
@@ -93,26 +93,24 @@ group-scoped value and is not a substitute for `lamp_id`
 
 ### 4.2 Value domains
 
-`operating_mode` (persistent modes):
-
-`AUTO_SENSOR`, `AUTO_SCHEDULE_SENSOR`, `FIXED_SCHEDULE`, `FORCE_ON`,
-`FORCE_OFF`.
-
-`active_override`:
-
-`NONE`, `FORCE_ON`, `FORCE_OFF`.
-
 `configured_mode` (persistent automatic modes only):
 
 `AUTO_SENSOR`, `AUTO_SCHEDULE_SENSOR`, `FIXED_SCHEDULE`.
 
-`effective_mode`:
+`active_override` (temporary, not persistent):
+
+`NONE`, `FORCE_ON`, `FORCE_OFF`.
+
+`effective_mode` (the mode actually in force, including overrides):
 
 `AUTO_SENSOR`, `AUTO_SCHEDULE_SENSOR`, `FIXED_SCHEDULE`, `FORCE_ON`,
 `FORCE_OFF`.
 
-`RETURN_TO_AUTO` is **not** a mode. It is an operator command that sets
-`active_override = NONE`, after which `effective_mode = configured_mode`.
+The legacy name `operating_mode` is **not used**. Where an older
+document said "operating mode" it meant one of the three values above,
+and the correct name is used explicitly. `RETURN_TO_AUTO` is a
+command/action that clears the override; it is not a mode and never
+appears in any of the three domains.
 
 `commanded_state`, `switching_feedback`, `actual_state`:
 
@@ -327,7 +325,7 @@ RS-485 message types): `LAMP_ON`, `LAMP_OFF`, `RESET_ENERGY`, `SET_MODE`,
 | --- | --- | --- |
 | `config_version` | identifier | Version of the configuration set. |
 | `site_id`, `group_id`, `lamp_id` | identifier | Configuration scope. |
-| `operating_mode` | enum | Configured mode. |
+| `configured_mode` | enum | Persistent automatic mode (see 4.2). |
 | `light_on_threshold` | quantity | ON threshold for sensor control. |
 | `light_off_threshold` | quantity | OFF threshold for sensor control. |
 | `hysteresis` | quantity | Hysteresis applied to thresholds. |

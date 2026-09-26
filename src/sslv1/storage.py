@@ -116,7 +116,15 @@ class RecordStore:
         self,
         capacity: Optional[int] = None,
         retention: Optional[RetentionPolicy] = None,
+        on_delete=None,
     ) -> None:
+        """Create a record store.
+
+        ``on_delete`` is an optional callback invoked as
+        ``on_delete(record, actor, ticks)`` whenever a retained record is
+        deleted, so the caller can raise the deletion audit event required by
+        ``PR-STORAGE-009``. Deletion is never silent.
+        """
         if capacity is not None and capacity <= 0:
             raise StorageError("capacity must be positive when specified")
         self._capacity = capacity
@@ -127,6 +135,7 @@ class RecordStore:
         self._full = False
         self._power_lost = False
         self._deleted: List[int] = []
+        self._on_delete = on_delete
 
     # ------------------------------------------------------------------
     # properties
@@ -311,6 +320,8 @@ class RecordStore:
             )
         record.lifecycle_state = RecordLifecycleState.DELETED
         self._deleted.append(sequence_number)
+        if self._on_delete is not None:
+            self._on_delete(record, actor, ticks)
         return record
 
     def automatic_deletion_candidates(self, ticks: int) -> Tuple[StorageRecord, ...]:

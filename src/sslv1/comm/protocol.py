@@ -93,7 +93,7 @@ def _decode_empty(data: bytes) -> Dict[str, object]:
 def _encode_status_response(fields: Mapping[str, object]) -> bytes:
     _require(
         fields,
-        "operating_mode",
+        "effective_mode",
         "override",
         "commanded_state",
         "switching_feedback",
@@ -104,7 +104,7 @@ def _encode_status_response(fields: Mapping[str, object]) -> bytes:
     )
     return struct.pack(
         ">8B",
-        _enum_code(OperatingMode, fields["operating_mode"], "operating_mode"),
+        _enum_code(OperatingMode, fields["effective_mode"], "effective_mode"),
         _enum_code(OverrideState, fields["override"], "override"),
         _enum_code(LampState, fields["commanded_state"], "commanded_state"),
         _enum_code(LampState, fields["switching_feedback"], "switching_feedback"),
@@ -120,7 +120,7 @@ def _decode_status_response(data: bytes) -> Dict[str, object]:
         raise ProtocolError("STATUS_RESPONSE payload must be 8 bytes")
     codes = struct.unpack(">8B", data)
     return {
-        "operating_mode": list(OperatingMode)[codes[0]],
+        "effective_mode": list(OperatingMode)[codes[0]],
         "override": list(OverrideState)[codes[1]],
         "commanded_state": list(LampState)[codes[2]],
         "switching_feedback": list(LampState)[codes[3]],
@@ -143,7 +143,7 @@ def _encode_measurement_response(fields: Mapping[str, object]) -> bytes:
         "power_mw",
         "energy_mwh",
         "light_level",
-        "operating_mode",
+        "effective_mode",
         "commanded_state",
         "switching_feedback",
         "actual_state",
@@ -159,7 +159,7 @@ def _encode_measurement_response(fields: Mapping[str, object]) -> bytes:
         int(fields["power_mw"]),
         int(fields["energy_mwh"]),
         int(fields["light_level"]),
-        _enum_code(OperatingMode, fields["operating_mode"], "operating_mode"),
+        _enum_code(OperatingMode, fields["effective_mode"], "effective_mode"),
         _enum_code(LampState, fields["commanded_state"], "commanded_state"),
         _enum_code(LampState, fields["switching_feedback"], "switching_feedback"),
         _enum_code(LampState, fields["actual_state"], "actual_state"),
@@ -180,7 +180,7 @@ def _decode_measurement_response(data: bytes) -> Dict[str, object]:
         "power_mw": values[3],
         "energy_mwh": values[4],
         "light_level": values[5],
-        "operating_mode": list(OperatingMode)[values[6]],
+        "effective_mode": list(OperatingMode)[values[6]],
         "commanded_state": list(LampState)[values[7]],
         "switching_feedback": list(LampState)[values[8]],
         "actual_state": list(LampState)[values[9]],

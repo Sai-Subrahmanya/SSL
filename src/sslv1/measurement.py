@@ -29,13 +29,21 @@ from .time_model import Timestamp
 
 @dataclass(frozen=True)
 class Measurement:
-    """A per-lamp measurement snapshot."""
+    """A per-lamp measurement snapshot.
+
+    ``effective_mode`` is the **effective** mode - the mode actually in
+    force when the snapshot was taken, including any active override. It is
+    not the persistent configured mode and it is not an override. The
+    three-valued model is ``configured_mode`` / ``active_override`` /
+    ``effective_mode`` (``PR-CONTROL-007``, ``D-031``); ``RETURN_TO_AUTO``
+    is a command, never a mode.
+    """
 
     timestamp: Timestamp
     site_id: Identifier
     group_id: Identifier
     lamp_id: Identifier
-    operating_mode: OperatingMode
+    effective_mode: OperatingMode
     commanded_state: LampState
     switching_feedback: LampState
     actual_state: LampState
@@ -65,7 +73,7 @@ class Measurement:
             "site_id": str(self.site_id),
             "group_id": str(self.group_id),
             "lamp_id": str(self.lamp_id),
-            "operating_mode": self.operating_mode.value,
+            "effective_mode": self.effective_mode.value,
             "commanded_state": self.commanded_state.value,
             "switching_feedback": self.switching_feedback.value,
             "actual_state": self.actual_state.value,

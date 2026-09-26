@@ -305,6 +305,154 @@ def test_no_protection_condition_is_defined_in_v1(lamp_node, operator):
 
 
 # --------------------------------------------------------------------------
+# 11a. protection state is written to the field decide() actually reads
+#
+# Regression: LampNode.set_protection() used to write ``safe_state`` while
+# ControlModel.decide() reads ``forced_state``. Every pre-existing protection
+# test used LampState.OFF, which is also the default of ``forced_state``, so
+# the dead write was invisible and the tests passed.
+# --------------------------------------------------------------------------
+def test_protection_forced_off_commands_off(lamp_node):
+    """Protection active + forced OFF -> commanded state OFF."""
+    lamp_node.step(healthy_sources(light_level=10.0), ticks=1000)
+    assert lamp_node.control.lamp_is_on is True
+
+    lamp_node.set_protection(True, LampState.OFF, reason="test protection")
+    decision = lamp_node.step(healthy_sources(light_level=10.0), ticks=2000)
+
+    assert decision.commanded_state is LampState.OFF
+    assert decision.decided_by == ControlLayer.SAFETY_PROTECTION
+    assert decision.reason == "test protection"
+    assert lamp_node.control.lamp_is_on is False
+
+
+def test_protection_forced_on_commands_on(lamp_node):
+    """Protection active + forced ON -> commanded state ON."""
+    lamp_node.step(healthy_sources(light_level=400.0), ticks=1000)
+    assert lamp_node.control.lamp_is_on is False
+
+    lamp_node.set_protection(True, LampState.ON, reason="forced on by protection")
+    decision = lamp_node.step(healthy_sources(light_level=400.0), ticks=2000)
+
+    assert decision.commanded_state is LampState.ON
+    assert decision.decided_by == ControlLayer.SAFETY_PROTECTION
+    assert lamp_node.control.lamp_is_on is True
+
+
+def test_protection_forced_state_is_the_field_decide_reads(lamp_node):
+    """The state passed to set_protection must reach ProtectionState.
+
+    This is the direct regression guard: the node must not stash the requested
+    state under a different attribute name from the one decide() consumes.
+    """
+    lamp_node.set_protection(True, LampState.ON, reason="guard")
+    assert lamp_node.protection.forced_state is LampState.ON
+    assert lamp_node.protection.active is True
+    assert lamp_node.protection.reason == "guard"
+
+    # No dead/differently-named attribute may hold the requested state.
+    assert not hasattr(lamp_node.protection, "safe_state")
+    assert set(vars(lamp_node.protection)) == {
+        "active", "forced_state", "reason"
+    }
+
+
+def test_protection_outranks_force_on_override(lamp_node, operator):
+    """Protection outranks FORCE_ON."""
+    lamp_node.force_on(operator, ticks=1000)
+    assert lamp_node.control.lamp_is_on is True
+
+    lamp_node.set_protection(True, LampState.OFF, reason="protection over FORCE_ON")
+    decision = lamp_node.step(healthy_sources(light_level=10.0), ticks=2000)
+
+    assert decision.decided_by == ControlLayer.SAFETY_PROTECTION
+    assert decision.commanded_state is LampState.OFF
+    assert decision.effective_mode is OperatingMode.FORCE_ON  # override still set
+    assert lamp_node.control.lamp_is_on is False
+
+
+def test_protection_outranks_force_off_override(lamp_node, operator):
+    """Protection outranks FORCE_OFF (both directions)."""
+    lamp_node.force_off(operator, ticks=1000)
+    assert lamp_node.control.lamp_is_on is False
+
+    lamp_node.set_protection(True, LampState.ON, reason="protection over FORCE_OFF")
+    decision = lamp_node.step(healthy_sources(light_level=10.0), ticks=2000)
+
+    assert decision.decided_by == ControlLayer.SAFETY_PROTECTION
+    assert decision.commanded_state is LampState.ON
+    assert decision.effective_mode is OperatingMode.FORCE_OFF  # override still set
+    assert lamp_node.control.lamp_is_on is True
+
+
+def test_protection_outranks_automatic_mode(lamp_node):
+    """Protection outranks the configured automatic mode."""
+    lamp_node.set_protection(True, LampState.OFF, reason="over automatic")
+    decision = lamp_node.step(healthy_sources(light_level=10.0), ticks=2000)
+    assert decision.decided_by == ControlLayer.SAFETY_PROTECTION
+    assert decision.commanded_state is LampState.OFF
+    assert decision.effective_mode is OperatingMode.AUTO_SENSOR
+
+
+def test_clearing_protection_restores_priority(lamp_node, operator):
+    """Clearing protection restores normal priority behaviour."""
+    lamp_node.force_on(operator, ticks=1000)
+    lamp_node.set_protection(True, LampState.OFF, reason="protection")
+    assert lamp_node.step(healthy_sources(light_level=10.0), ticks=2000).commanded_state is LampState.OFF
+
+    lamp_node.set_protection(False)
+    decision = lamp_node.step(healthy_sources(light_level=10.0), ticks=3000)
+    assert decision.decided_by == ControlLayer.AUTHORIZED_OVERRIDE
+    assert decision.commanded_state is LampState.ON
+
+
+def test_clearing_protection_restores_automatic_mode(lamp_node):
+    """After protection clears, the automatic mode governs again."""
+    lamp_node.set_protection(True, LampState.OFF, reason="protection")
+    lamp_node.step(healthy_sources(light_level=400.0), ticks=1000)
+    assert lamp_node.control.lamp_is_on is False
+
+    lamp_node.set_protection(False)
+    decision = lamp_node.step(healthy_sources(light_level=10.0), ticks=2000)
+    assert decision.decided_by == ControlLayer.SENSOR_SCHEDULE_LOGIC
+    assert decision.commanded_state is LampState.ON
+    assert lamp_node.control.lamp_is_on is True
+
+
+def test_node_protection_cannot_diverge_from_control_model(lamp_node):
+    """Node and ControlModel must share one ProtectionState object.
+
+    A second copy would let the state decide() reads drift silently from the
+    state the caller set. Identity, not equality, is what guarantees this.
+    """
+    assert lamp_node.protection is lamp_node.control.protection
+
+    # Reassigning the node's view must not create a private copy.
+    lamp_node.set_protection(True, LampState.ON, reason="identity check")
+    assert lamp_node.protection is lamp_node.control.protection
+    assert lamp_node.control.protection.forced_state is LampState.ON
+
+    # Writing through the ControlModel is visible through the node, and the
+    # node has no independent attribute to fall back on.
+    lamp_node.control.set_protection(True, LampState.OFF, reason="via model")
+    assert lamp_node.protection.forced_state is LampState.OFF
+    assert lamp_node.protection.reason == "via model"
+
+    decision = lamp_node.step(healthy_sources(light_level=10.0), ticks=3000)
+    assert decision.commanded_state is LampState.OFF
+
+
+def test_restart_clears_protection(lamp_node):
+    """A restart must not leave a stale protection condition latched."""
+    lamp_node.set_protection(True, LampState.OFF, reason="before restart")
+    lamp_node.restart(ticks=5000)
+    assert lamp_node.protection.active is False
+    decision = lamp_node.step(healthy_sources(light_level=10.0), ticks=6000)
+    assert decision.decided_by != ControlLayer.SAFETY_PROTECTION
+    assert decision.commanded_state is LampState.ON
+
+
+# --------------------------------------------------------------------------
 # no automatic shutdown for non-protective conditions
 # --------------------------------------------------------------------------
 def test_fault_does_not_switch_lamp_off(lamp_node, engineer):

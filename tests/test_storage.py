@@ -14,6 +14,8 @@ from sslv1.identity import Identifier
 from sslv1.storage import RecordStore, RetentionPolicy, StorageRecord
 from sslv1.time_model import Timestamp
 
+from conftest import healthy_sources
+
 DEVICE = Identifier("LAMP-01")
 
 
@@ -244,3 +246,86 @@ def test_zero_capacity_is_rejected():
 def test_unknown_sequence_is_rejected(store):
     with pytest.raises(StorageError):
         store.mark_uploaded(999)
+
+
+# --------------------------------------------------------------------------
+# 35. deletion is audited and never silent (PR-STORAGE-009)
+# --------------------------------------------------------------------------
+def test_deletion_raises_an_audit_event_through_the_node(lamp_node):
+    """Deleting a retained record must produce an auditable event."""
+    for index in range(3):
+        lamp_node.step(healthy_sources(light_level=10.0), ticks=1000 * (index + 1))
+    record = lamp_node.storage.records[0]
+    lamp_node.storage.mark_uploaded(record.sequence_number)
+    lamp_node.storage.mark_confirmed(record.sequence_number)
+
+    before = len(lamp_node.events)
+    lamp_node.storage.delete(
+        record.sequence_number, actor="admin-01", ticks=50_000
+    )
+
+    emitted = list(lamp_node.events)[before:]
+    assert any(e.event_type.value == "RECORD_DELETED" for e in emitted)
+    deleted = [e for e in emitted if e.event_type.value == "RECORD_DELETED"][0]
+    assert "admin-01" in deleted.reason
+    assert str(record.sequence_number) in deleted.reason
+
+
+def test_deletion_audit_reports_the_actor(lamp_node):
+    """The audit event names the actor, so deletion is attributable."""
+    lamp_node.step(healthy_sources(light_level=10.0), ticks=1000)
+    record = lamp_node.storage.records[0]
+    lamp_node.storage.mark_uploaded(record.sequence_number)
+    lamp_node.storage.mark_confirmed(record.sequence_number)
+
+    lamp_node.storage.delete(record.sequence_number, actor="engineer-07", ticks=9000)
+
+    events = [
+        e for e in lamp_node.events if e.event_type.value == "RECORD_DELETED"
+    ]
+    assert events and "engineer-07" in events[-1].reason
+
+
+def test_store_without_a_hook_still_deletes():
+    """The hook is optional; a bare store must keep working."""
+    store = RecordStore()
+    make_record(store)
+    record = store.records[0]
+    store.mark_uploaded(record.sequence_number)
+    store.mark_confirmed(record.sequence_number)
+    store.delete(record.sequence_number, actor="admin-01", ticks=10_000)
+    assert record.lifecycle_state is RecordLifecycleState.DELETED
+
+
+def test_retention_policy_never_auto_deletes_by_default():
+    """A-29: no retention duration is invented and nothing auto-deletes."""
+    policy = RetentionPolicy()
+    assert policy.automatic_deletion is False
+    assert policy.minimum_retention_ticks is None
+
+    store = RecordStore()
+    make_record(store, 1000)
+    record = store.records[0]
+    store.mark_uploaded(record.sequence_number)
+    store.mark_confirmed(record.sequence_number)
+    # Even far in the future, nothing is deleted automatically.
+    assert store.automatic_deletion_candidates(ticks=10_000_000) == ()
+    assert len(store.retained) == 1
+
+
+def test_storage_full_behaviour_is_a_simulation_detail_not_a_decision():
+    """A-09: the code's storage-full behaviour is not an engineering decision.
+
+    The store raises StorageFullError and stops accepting records. That is the
+    simulation's implementation choice; the selection among the documented
+    candidates in docs/06 remains an open engineering decision (A-09).
+    """
+    store = RecordStore(capacity=2)
+    make_record(store, 1000)
+    make_record(store, 2000)
+    with pytest.raises(StorageFullError):
+        make_record(store, 3000)
+    assert store.is_full is True
+    # Nothing was silently dropped to make room: both records survive.
+    assert len(store.records) == 2
+    assert len(store.pending_upload) == 2

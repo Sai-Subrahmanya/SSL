@@ -156,9 +156,11 @@ class LampConfiguration:
     restart_default_state: LampState = LampState.OFF
     automatic_deletion: bool = False
     minimum_retention_ticks: Optional[int] = None
-    storage_full_behaviour: StorageFullBehaviour = (
-        StorageFullBehaviour.RAISE_CONDITION_ONLY
-    )
+    #: Deliberately ``None``. A-09 (storage-full behaviour) is an **open**
+    #: engineering decision, so the default must not name an option. The
+    #: store raises StorageFullError so the condition is never silent;
+    #: that is a simulation detail, not the decided V1 behaviour.
+    storage_full_behaviour: Optional[StorageFullBehaviour] = None
 
     # -- energy ------------------------------------------------------------
     energy_reset_role: Role = Role.ENGINEER

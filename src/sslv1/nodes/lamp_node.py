@@ -98,15 +98,16 @@ class LampNode(BusEndpoint):
         self.ticks_per_hour = ticks_per_hour
 
         self.time = TimeModel(clock=self.clock, device_id=identity.device_id)
-        self.protection = ProtectionState()
-        self.control = ControlModel(config=config, protection=self.protection)
+        self.control = ControlModel(config=config)
         self.events = EventLog()
         self.validator = MeasurementValidator(config)
         self.diagnostics = DiagnosticEngine(config)
         self.faults = FaultEngine(config, on_event=self._on_fault_event)
         self.notifications = NotificationEngine(config, on_event=self._on_fault_event)
         self.storage = RecordStore(
-            capacity=storage_capacity, retention=RetentionPolicy()
+            capacity=storage_capacity,
+            retention=RetentionPolicy(),
+            on_delete=self._on_record_deleted,
         )
         self.comm = CommunicationStateMachine(retry_limit=config.comm_retry_count)
         self._authorizer = authorizer or AuthorizationService()
@@ -188,11 +189,23 @@ class LampNode(BusEndpoint):
 
     def _apply_restart_default(self, ticks: int) -> None:
         state = self.config.restart_default_state
-        self.control.protection.active = False
+        self.control.set_protection(False)
         if state is LampState.ON:
             self.control._lamp_is_on = True
         else:
             self.control._lamp_is_on = False
+
+    @property
+    def protection(self) -> ProtectionState:
+        """The protection state owned by :class:`ControlModel`.
+
+        This is a **property**, not a second object. The node must never hold
+        its own copy of the protection state: a duplicate would allow the
+        state consumed by :meth:`ControlModel.decide` to diverge silently from
+        the state the caller believes it set. There is exactly one
+        :class:`ProtectionState` instance, owned by the :class:`ControlModel`.
+        """
+        return self.control.protection
 
     def set_protection(
         self,
@@ -204,12 +217,13 @@ class LampNode(BusEndpoint):
 
         V1 defines no automatic protective shutdown condition, so this is the
         only way a protection condition enters the model.
+
+        Delegates to :meth:`ControlModel.set_protection` so that the field
+        written here is the field read by :meth:`ControlModel.decide`. Writing
+        a differently-named attribute here would leave ``forced_state`` at its
+        default while the caller believed it had commanded ``state``.
         """
-        self.protection.active = bool(active)
-        self.protection.safe_state = state
-        self.protection.reason = reason
-        if active:
-            self.control.protection = self.protection
+        self.control.set_protection(bool(active), state, reason)
 
     # ------------------------------------------------------------------
     # control cycle
@@ -287,7 +301,7 @@ class LampNode(BusEndpoint):
             site_id=self.site_id,
             group_id=self.group_id,
             lamp_id=self.lamp_id,
-            operating_mode=decision.effective_mode,
+            effective_mode=decision.effective_mode,
             commanded_state=decision.commanded_state,
             switching_feedback=sources.switching_feedback,
             actual_state=_derive_actual_state(
@@ -374,7 +388,7 @@ class LampNode(BusEndpoint):
     # -- handlers ---------------------------------------------------------
     def _handle_status_request(self, frame: Frame) -> Frame:
         payload = {
-            "operating_mode": self.control.effective_mode,
+            "effective_mode": self.control.effective_mode,
             "override": self.control.active_override,
             "commanded_state": _commanded_state(self.control),
             "switching_feedback": (
@@ -412,7 +426,7 @@ class LampNode(BusEndpoint):
             "power_mw": int(round((m.power or 0.0) * 1000)),
             "energy_mwh": int(round((m.energy or 0.0) * 1000)),
             "light_level": int(round(m.light_level or 0.0)),
-            "operating_mode": m.operating_mode,
+            "effective_mode": m.effective_mode,
             "commanded_state": m.commanded_state,
             "switching_feedback": m.switching_feedback,
             "actual_state": m.actual_state,
@@ -880,6 +894,20 @@ class LampNode(BusEndpoint):
             event_data=data or {},
         )
 
+    def _on_record_deleted(self, record, actor: str, ticks: int) -> None:
+        """Raise the deletion audit event (``PR-STORAGE-009``).
+
+        Deletion of a retained record must never be silent: the actor and the
+        record identity are recorded.
+        """
+        self._record_event(
+            EventType.RECORD_DELETED,
+            EventSource.STORAGE,
+            EventSeverity.WARNING,
+            "record %d deleted by %s" % (record.sequence_number, actor),
+            ticks=ticks,
+        )
+
     def _on_fault_event(self, kind: str, fault: Fault, reason: str) -> None:
         mapping = {
             "FAULT_SUSPECTED": (EventType.FAULT_SUSPECTED, EventSeverity.WARNING),
@@ -900,7 +928,7 @@ class LampNode(BusEndpoint):
             "FAULT_CLOSED": (EventType.FAULT_CLOSED, EventSeverity.INFO),
         }
         event_type, severity = mapping.get(kind, (EventType.FAULT_SUSPECTED, EventSeverity.INFO))
-        self._record_event(
+        event = self._record_event(
             event_type,
             EventSource.FAULT,
             severity,
@@ -913,6 +941,11 @@ class LampNode(BusEndpoint):
                 "notification_state": fault.notification_state.value,
             },
         )
+        # Keep the fault -> event association documented in 03_data_model.md
+        # section 5 actually populated, rather than a field that is declared
+        # and never filled.
+        if event.event_id not in fault.related_event_ids:
+            fault.related_event_ids.append(event.event_id)
 
     def _on_command_event(self, kind: str, record: CommandRecord, reason: str) -> None:
         mapping = {

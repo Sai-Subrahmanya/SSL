@@ -180,10 +180,12 @@ class NotificationEngine:
 
         elapsed = ticks - last
 
-        # Escalation is reachable from any state that is waiting for an
-        # acknowledgement (SENT, AC_PENDING, REMINDER_DUE).
+        # Escalation and reminders apply to the states in which the engine
+        # actually *rests* while waiting for an acknowledgement. ``SENT`` is
+        # deliberately absent: notify() moves SENT -> ACK_PENDING atomically,
+        # so a fault never rests in SENT, and neither SENT -> REMINDER_DUE nor
+        # SENT -> ESCALATED is a legal transition.
         if fault.notification_state in (
-            NotificationState.SENT,
             NotificationState.ACK_PENDING,
             NotificationState.REMINDER_DUE,
         ):
@@ -202,6 +204,13 @@ class NotificationEngine:
                 )
                 return "escalated"
             if elapsed >= self._policy.reminder_interval_ticks:
+                if fault.notification_state is NotificationState.REMINDER_DUE:
+                    # A reminder is already outstanding. Re-entering
+                    # REMINDER_DUE is not a legal transition, and re-emitting
+                    # on every tick would flood the event log. The only way
+                    # forward from REMINDER_DUE is acknowledgement, delivery
+                    # failure or escalation, all handled elsewhere.
+                    return None
                 NotificationLifecycle.transition(
                     fault,
                     NotificationState.REMINDER_DUE,
