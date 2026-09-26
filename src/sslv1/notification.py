@@ -70,7 +70,7 @@ class NotificationLifecycle:
             )
         fault.notification_state = target
         if reason:
-            fault.confirmation_reason = reason
+            fault.notification_reason = reason
 
 
 @dataclass(frozen=True)
@@ -108,6 +108,8 @@ class NotificationEngine:
         self._on_event = on_event
         self._last_notified: Dict[str, int] = {}
         self._delivery_attempts: Dict[str, int] = {}
+        self._initialized = set()
+        self._acknowledged = set()
 
     @property
     def policy(self) -> NotificationPolicy:
@@ -116,6 +118,9 @@ class NotificationEngine:
     # ------------------------------------------------------------------
     def on_fault_confirmed(self, fault: Fault, ticks: int) -> None:
         """Initialise notification state when a fault is confirmed."""
+        if fault.fault_id in self._initialized:
+            return
+        self._initialized.add(fault.fault_id)
         if not self._policy.ack_required:
             fault.notification_state = NotificationState.NOT_REQUIRED
             return
@@ -125,6 +130,7 @@ class NotificationEngine:
 
     def notify(self, fault: Fault, ticks: int, delivered: bool = True) -> NotificationState:
         """Attempt delivery of the notification."""
+        self._event_ticks = ticks
         if fault.notification_state is NotificationState.NOT_REQUIRED:
             return fault.notification_state
 
@@ -150,6 +156,7 @@ class NotificationEngine:
         return fault.notification_state
 
     def delivery_failed(self, fault: Fault, ticks: int) -> NotificationState:
+        self._event_ticks = ticks
         attempts = self._delivery_attempts.get(fault.fault_id, 0) + 1
         self._delivery_attempts[fault.fault_id] = attempts
         if fault.notification_state is NotificationState.DELIVERY_FAILED:
@@ -185,7 +192,10 @@ class NotificationEngine:
 
         Returns a short description of what happened, or ``None``.
         """
+        self._event_ticks = ticks
         if fault.notification_state is NotificationState.NOT_REQUIRED:
+            return None
+        if fault.fault_id in self._acknowledged:
             return None
         last = self._last_notified.get(fault.fault_id)
         if last is None:
@@ -240,8 +250,10 @@ class NotificationEngine:
         Acknowledgement is recorded; it does not close the fault and does not
         change lamp operation (``PR-FAULT-008``).
         """
+        self._event_ticks = fault.acknowledged_ticks
         if fault.notification_state is NotificationState.NOT_REQUIRED:
             return
+        self._acknowledged.add(fault.fault_id)
         # Notification state remains ACK_PENDING (or its current value); the
         # acknowledgement itself is recorded on the fault lifecycle by the
         # fault engine.

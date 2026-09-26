@@ -67,6 +67,7 @@ values, which are resolved against
 | Status value | Meaning |
 | --- | --- |
 | `VERIFIED (digital prototype)` | Implemented in `src/sslv1/` and demonstrated by a deterministic test in `tests/`. **Digital prototype only** - no physical property is validated. |
+| `PARTIAL (digital prototype; see requirements_traceability.md)` | Some digital behavior is tested; explicit schema/integration scope remains incomplete. |
 | `IMPLEMENTED (digital prototype)` | Implemented in `src/sslv1/`; no named test yet. |
 | `Proposed - not implemented` | No implementation exists yet. Reserved for physical-only requirements and work belonging to a later phase. |
 
@@ -291,7 +292,7 @@ A command shall not be considered successful merely because it was received.
 The command lifecycle shall be:
 
 ```text
-COMMAND_SENT -> RECEIVED -> EXECUTED -> ACKNOWLEDGED -> ACTUAL_STATE_VERIFIED
+COMMAND_CREATED -> RECEIVED -> EXECUTED -> ACKNOWLEDGED -> ACTUAL_STATE_VERIFIED
 ```
 
 and each stage shall be independently observable.
@@ -794,7 +795,7 @@ Distinguishes "known and being worked on" from "known and ignored".
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 6)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 The system shall support a `VERIFYING` state in which a repaired fault is
@@ -949,7 +950,7 @@ unresponsive node.
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 11)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 Communication health shall be modelled by the state machine:
@@ -1094,7 +1095,7 @@ value of the system.
 
 - **Priority:** SHOULD
 - **Verification method:** Inspection (Phase 8); digital prototype test (Phase 12)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 Firmware, configuration and calibration data shall be stored separately from
@@ -1205,7 +1206,7 @@ history.
 
 - **Priority:** MUST
 - **Verification method:** Inspection (Phase 12)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 The system shall support configuration of, as a minimum: operating mode,
@@ -1230,7 +1231,7 @@ hardcoded in business logic (`PR-CONFIG-006`).
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 12)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 Configuration shall be readable and writable over the RS-485 bus, and each
@@ -1479,7 +1480,7 @@ Group size is a primary cost and performance driver of the architecture.
 
 - **Priority:** SHOULD
 - **Verification method:** Integration test (Phase 13)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 The architecture shall support multiple groups per site, aggregated at the
@@ -1586,7 +1587,7 @@ Buffering is the mechanism that makes offline operation non-destructive.
 
 - **Priority:** MUST
 - **Verification method:** Integration test (Phase 16); system validation (Phase 17)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 After communication recovery, buffered records shall be delivered following
@@ -1812,10 +1813,9 @@ Modelled behaviour is **digital validation only**.
 | Traceability established | Yes - [requirements_traceability.md](requirements_traceability.md) |
 | Implementation | Phase 1 domain model implemented and tested |
 
-Requirement status values in this document remain `Proposed - not
-implemented` at the individual requirement level; implementation and
-verification state is recorded in the traceability matrix rather than
-duplicated here.
+Individual statuses are synchronized with the traceability matrix. VERIFIED
+means bounded digital behavior only; PARTIAL and PLANNED remain explicit.
+The requirements themselves are not weakened to fit the implementation.
 
 ---
 
@@ -1832,3 +1832,16 @@ duplicated here.
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
 - [requirements_traceability.md](requirements_traceability.md)
+
+## Corrective verification scope (2026-09-26)
+
+Current status: 78 VERIFIED (bounded digital behavior), 7 PARTIAL, 3 PLANNED.
+These statuses supersede blanket completion summaries. The full requirements
+are unchanged; PARTIAL exposes missing integration/schema/application scope
+rather than silently relaxing a requirement. The corrective implementation and
+regressions are detailed in IMPLEMENTATION_REPORT.md and the traceability matrix.
+
+Physical ON/OFF command success requires fresh observations, not a transmitted
+frame, received ACK alone or commanded boolean. Mode/override/energy actions
+verify the state they actually modify. Receipt at the Group Controller is
+observable separately from remote execution and actual-state verification.

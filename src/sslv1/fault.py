@@ -55,11 +55,14 @@ class Fault:
     repair_status: RepairStatus = RepairStatus.NOT_STARTED
     verification_status: VerificationStatus = VerificationStatus.NOT_VERIFIED
     evidence: Dict[str, object] = field(default_factory=dict)
+    latest_evidence: Dict[str, object] = field(default_factory=dict)
     verification_evidence: Optional[Dict[str, object]] = None
     related_event_ids: List[int] = field(default_factory=list)
     actor: Optional[str] = None
     closed_actor: Optional[str] = None
     confirmation_reason: str = ""
+    notification_reason: str = ""
+    previous_fault_id: Optional[str] = None
 
     @property
     def is_active(self) -> bool:
@@ -200,12 +203,18 @@ class FaultEngine:
 
         Returns the fault that was created, confirmed or cleared, if any.
         """
+        self._event_actor = None
+        self._event_ticks = ticks
         if result.is_normal:
             return self._observe_normal(lamp_id, ticks)
 
         category = result.fault_category or FaultType.UNKNOWN
         classification = result.classification
         key = (str(lamp_id), category, classification)
+        for other in self.active_for_lamp(lamp_id):
+            if other.state is FaultState.SUSPECTED and other.key() != key:
+                other.confirmation_count = 0
+                other.first_observation_ticks = ticks
         fault_id = self._active_by_key.get(key)
 
         if fault_id is None:
@@ -213,7 +222,9 @@ class FaultEngine:
 
         fault = self._faults[fault_id]
         fault.last_observation_ticks = ticks
-        fault.evidence = _evidence_snapshot(result)
+        fault.latest_evidence = _evidence_snapshot(result)
+        if fault.state is FaultState.SUSPECTED:
+            fault.evidence = dict(fault.latest_evidence)
 
         # Count consecutive observations inside the confirmation window. The
         # count keeps growing after confirmation so that oscillation is
@@ -247,8 +258,11 @@ class FaultEngine:
 
     # ------------------------------------------------------------------
     def acknowledge(self, fault_id: str, actor: str, ticks: int) -> Fault:
+        self._event_actor = actor
+        self._event_ticks = ticks
         fault = self._require(fault_id)
         if fault.state is not FaultState.CONFIRMED:
+            self._emit("FAULT_TRANSITION_REJECTED", fault, "acknowledge rejected for actor %s from %s" % (actor, fault.state.value))
             raise IllegalTransitionError(
                 "fault %s cannot be acknowledged from state %s"
                 % (fault_id, fault.state.value)
@@ -258,8 +272,11 @@ class FaultEngine:
         return fault
 
     def start_repair(self, fault_id: str, actor: str, ticks: int) -> Fault:
+        self._event_actor = actor
+        self._event_ticks = ticks
         fault = self._require(fault_id)
         if fault.state is not FaultState.ACKNOWLEDGED:
+            self._emit("FAULT_TRANSITION_REJECTED", fault, "start_repair rejected for actor %s from %s" % (actor, fault.state.value))
             raise IllegalTransitionError(
                 "fault %s cannot start repair from state %s"
                 % (fault_id, fault.state.value)
@@ -270,8 +287,11 @@ class FaultEngine:
         return fault
 
     def report_repaired(self, fault_id: str, actor: str, ticks: int) -> Fault:
+        self._event_actor = actor
+        self._event_ticks = ticks
         fault = self._require(fault_id)
         if fault.state is not FaultState.UNDER_REPAIR:
+            self._emit("FAULT_TRANSITION_REJECTED", fault, "report_repaired rejected for actor %s from %s" % (actor, fault.state.value))
             raise IllegalTransitionError(
                 "fault %s cannot be reported repaired from state %s"
                 % (fault_id, fault.state.value)
@@ -279,6 +299,7 @@ class FaultEngine:
         fault.repair_status = RepairStatus.REPAIRED
         fault.verification_status = VerificationStatus.VERIFYING
         FaultLifecycle.transition(fault, FaultState.VERIFYING, ticks, actor=actor)
+        self._emit("FAULT_REPAIR_REPORTED", fault, "repair reported by %s" % actor)
         return fault
 
     def verify(
@@ -295,8 +316,11 @@ class FaultEngine:
         the fault to an active state (``UNDER_REPAIR``) rather than silently
         closing it (``PR-FAULT-011``).
         """
+        self._event_actor = actor
+        self._event_ticks = ticks
         fault = self._require(fault_id)
         if fault.state is not FaultState.VERIFYING:
+            self._emit("FAULT_TRANSITION_REJECTED", fault, "verify rejected for actor %s from %s" % (actor, fault.state.value))
             raise IllegalTransitionError(
                 "fault %s cannot be verified from state %s"
                 % (fault_id, fault.state.value)
@@ -362,6 +386,9 @@ class FaultEngine:
             last_observation_ticks=ticks,
             evidence=_evidence_snapshot(result),
         )
+        previous = [f for f in self.faults if f.key() == fault.key() and f.state is FaultState.CLOSED]
+        if previous:
+            fault.previous_fault_id = previous[-1].fault_id
         self._faults[fault.fault_id] = fault
         self._active_by_key[fault.key()] = fault.fault_id
         if fault.confirmation_count >= self._policy.count:

@@ -285,7 +285,7 @@ Each decision contains:
 | --- | --- |
 | Decision ID | D-018 |
 | Date | 2026-09-25 |
-| Decision | Frames carry start-of-frame, protocol version, source address, destination address, message type, payload length, payload, sequence number and CRC. The initial message type set is defined in the communication architecture document. The protocol is not implemented yet. |
+| Decision | Frames carry start-of-frame, protocol version, source address, destination address, message type, payload length, payload, sequence number and CRC. The initial message type set is defined in the communication architecture document. A digital implementation now exists; physical protocol details remain deferred. |
 | Reason | Establishes the protocol baseline before implementation. |
 | Alternatives | Adopting an existing off-the-shelf protocol at this stage. |
 | Consequences | Phase 9 implements framing, sequencing and CRC against this baseline. |
@@ -635,3 +635,18 @@ invented in this log.
 - [02_product_requirements.md](02_product_requirements.md)
 - [11_assumptions.md](11_assumptions.md)
 - [requirements_traceability.md](requirements_traceability.md)
+
+## Implementation reconciliation (2026-09-26)
+
+The earlier decisions remain the product-direction baseline; no open hardware,
+storage-full, numeric-retention or production-security decision is closed here.
+The corrective implementation follows D-017 (distinct command stages), D-031
+(single configured mode plus override), D-033 (independent notification), D-035
+(retention versus confirmation), D-036 (preliminary roles), D-037 (abstract GC
+buffer), D-038 (RESET_ENERGY subtype) and D-039 (logical-only time).
+
+Protocol revision 2, its strict binary metadata, symmetric numeric hysteresis
+margin and version-zero startup convention are explicit **digital implementation
+conventions** documented in 05/07, not new claims of approved hardware design,
+production authentication, site thresholds or numeric retention. They require
+engineering review before any firmware/wire compatibility baseline is frozen.

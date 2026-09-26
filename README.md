@@ -165,37 +165,31 @@ its requirements, architecture and design are documented.
 | Phase | Name | Status |
 | --- | --- | --- |
 | Phase 0 | Repository foundation | **Complete** |
-| Phase 1 | Core domain model | **Complete** (digital prototype) |
-| Phase 2 | Lamp Node | **Complete** (digital prototype) |
-| Phase 3 | Lighting control | **Complete** (digital prototype) |
-| Phase 4 | Measurement model | **Complete** (digital prototype) |
-| Phase 5 | Diagnostics | **Complete** (digital prototype) |
-| Phase 6 | Fault lifecycle | **Complete** (digital prototype) |
-| Phase 7 | Event / logging | **Complete** (digital prototype) |
-| Phase 8 | Persistent storage simulation | **Complete** (digital prototype) |
-| Phase 9 | RS-485 protocol | **Complete** (digital prototype) |
-| Phase 10 | Group Controller | **Complete** (digital prototype) |
-| Phase 11 | Communication failure / recovery | **Complete** (digital prototype) |
-| Phase 12 | Configuration | **Complete** (digital prototype) |
-| Phase 13 | Multi-node simulation | **Complete** (digital prototype) |
+| Phase 1 | Core domain model | Implemented (bounded digital model) |
+| Phase 2 | Lamp Node | Implemented (bounded digital model) |
+| Phase 3 | Lighting control | Implemented (bounded digital model) |
+| Phase 4 | Measurement model | Implemented (bounded digital model) |
+| Phase 5 | Diagnostics | Implemented (bounded digital model) |
+| Phase 6 | Fault lifecycle | Implemented (bounded digital model) |
+| Phase 7 | Event / logging | Implemented (bounded digital model) |
+| Phase 8 | Persistent storage simulation | Implemented (bounded digital model) |
+| Phase 9 | RS-485 protocol | Implemented (bounded digital model) |
+| Phase 10 | Group Controller | Implemented (bounded digital model) |
+| Phase 11 | Communication failure / recovery | Implemented (bounded digital model) |
+| Phase 12 | Configuration | Implemented (bounded digital model) |
+| Phase 13 | Multi-node simulation | Implemented (bounded digital model) |
 | Phase 14 | Fault injection | Not started |
 | Phase 15 | Master Control Center data layer | Not started |
 | Phase 16 | Full integration | Not started |
 | Phase 17 | System validation | Not started |
 | Phase 18 | Engineering audit | Not started |
 
-"Complete (digital prototype)" means the deterministic software model and its
-tests exist in `src/sslv1/` and `tests/`. It does **not** mean that any
-physical property has been validated. See
-[docs/requirements_traceability.md](docs/requirements_traceability.md) for the
-per-requirement status and its test evidence.
-
-This status table was audited against the implementation rather than assumed:
-every requirement was mapped to the phase its own verification method names and
-checked against real modules and real tests. Phases 1-13 are complete as
-digital prototypes; the three `PLANNED` requirements belong to Phases 14 and 18
-and are physical or inspection-only. The audited table is in
-[docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md#6-phase-1-13-audited-status).
+The phase table indicates model availability, not full product completion.
+Seven requirements remain PARTIAL and three PLANNED. Passing tests or the mere
+existence of modules does not establish requirement verification. See
+[docs/requirements_traceability.md](docs/requirements_traceability.md) for bounded
+per-requirement evidence and [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
+for the corrective review and remaining scope. Physical validation is separate.
 
 See [docs/00_project_overview.md](docs/00_project_overview.md) for the full
 roadmap description.
@@ -358,9 +352,9 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Architecture baseline | Drafted for review |
 | Assumptions register | Drafted for review (29 assumptions, 18 open) |
 | Engineering decision log | 40 decisions recorded |
-| Requirements traceability | Regenerated: 85 `VERIFIED`, 0 `IMPLEMENTED`, 3 `PLANNED` |
+| Requirements traceability | Regenerated: See reconciled VERIFIED / PARTIAL / PLANNED counts in docs/requirements_traceability.md |
 | Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (302 tests, all passing) |
+| Deterministic test suite | Implemented in `tests/` (438 tests, all passing) |
 | Physical validation | **Not started** - requires hardware |
 
 "Digital prototype" status means deterministic software behaviour has been
@@ -379,3 +373,21 @@ duration or certification) has been validated.
 - [docs/12_engineering_decisions.md](docs/12_engineering_decisions.md)
 - [docs/requirements_traceability.md](docs/requirements_traceability.md)
 - [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
+
+## Post-merge corrective status
+
+The digital model now authorizes before remote transmission, tracks pending
+commands through matched execution ACKs and fresh actual-state evidence, drives
+real logical polling deadlines/retries, and strictly versions configuration.
+Protocol version **2** retains the 17 message types and adds actor assertions,
+response correlation, configuration readback and observation metadata. It is
+not wire-compatible with the earlier prototype version 1.
+
+The complete corrective findings, test inventory and remaining limitations are
+in [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md). Requirement
+status is no longer inferred merely from an existing module and passing test.
+Structured remote configuration, automated repair-evidence comparison, complete
+multi-group MCC behavior, calibration storage and automatic GC-link fault
+workflow integration remain explicitly PARTIAL. This is a digital engineering
+prototype, not production firmware or physical validation. No open retention,
+storage-full, switching-feedback, RTC or security-policy decision is closed.

@@ -1,6 +1,6 @@
 """Payload codecs for the initial message type set.
 
-Payloads are encoded as compact big-endian binary with one-byte length
+Payloads are encoded as compact big-endian binary with two-byte length
 prefixes for variable-length strings. The codecs are pure functions: they
 depend on nothing outside the standard library and on no hardware.
 
@@ -31,7 +31,7 @@ from ..enums import (
     OverrideState,
     SensorStatus,
 )
-from ..errors import ProtocolError
+from ..errors import ProtocolError, ValidationError
 
 Encoder = Callable[[Mapping[str, object]], bytes]
 Decoder = Callable[[bytes], Dict[str, object]]
@@ -42,16 +42,16 @@ Decoder = Callable[[bytes], Dict[str, object]]
 # --------------------------------------------------------------------------
 def _pack_str(value: str) -> bytes:
     raw = value.encode("utf-8")
-    if len(raw) > 255:
+    if len(raw) > 65535:
         raise ProtocolError("string too long for payload")
-    return bytes([len(raw)]) + raw
+    return len(raw).to_bytes(2, "big") + raw
 
 
 def _unpack_str(data: bytes, offset: int) -> Tuple[str, int]:
-    if offset >= len(data):
+    if offset + 2 > len(data):
         raise ProtocolError("truncated string in payload")
-    length = data[offset]
-    offset += 1
+    length = int.from_bytes(data[offset:offset + 2], "big")
+    offset += 2
     if offset + length > len(data):
         raise ProtocolError("truncated string body in payload")
     return data[offset : offset + length].decode("utf-8"), offset + length
@@ -131,7 +131,7 @@ def _decode_status_response(data: bytes) -> Dict[str, object]:
     }
 
 
-_MEASUREMENT_FORMAT = ">qiiiiq7B"
+_MEASUREMENT_FORMAT = ">qiiiqq7B"
 
 
 def _encode_measurement_response(fields: Mapping[str, object]) -> bytes:
@@ -192,6 +192,8 @@ def _decode_measurement_response(data: bytes) -> Dict[str, object]:
 
 def _encode_control_command(fields: Mapping[str, object]) -> bytes:
     _require(fields, "subtype", "target_state", "command_id", "parameter")
+    if type(fields["parameter"]) is not int:
+        raise ProtocolError("control parameter must be an integer")
     return b"".join(
         [
             struct.pack(
@@ -323,7 +325,9 @@ def _encode_config_write(fields: Mapping[str, object]) -> bytes:
     params = fields["parameters"]
     if not isinstance(params, Mapping):
         raise ProtocolError("parameters must be a mapping")
-    body = bytearray(struct.pack(">HB", int(fields["config_version"]), len(params)))
+    if type(fields["config_version"]) is not int or any(type(value) is not int for value in params.values()):
+        raise ProtocolError("configuration wire values must be integers, without coercion")
+    body = bytearray(struct.pack(">HB", fields["config_version"], len(params)))
     for key in sorted(params):
         body += _pack_str(str(key))
         body += struct.pack(">i", int(params[key]))
@@ -468,9 +472,106 @@ class MessageCodec:
         return decoder(payload)
 
 
+# Revision 2 payload envelope: length-delimited existing binary body followed
+# by typed metadata. No new message types. Actor identity is an ASSERTION in
+# this trusted simulation, not authenticated wire security.
+_RESPONSE_TYPES = frozenset({
+    MessageType.STATUS_RESPONSE, MessageType.MEASUREMENT_RESPONSE,
+    MessageType.CONTROL_ACK, MessageType.CONFIG_ACK, MessageType.TIME_ACK,
+    MessageType.IDENTIFY_ACK, MessageType.HEARTBEAT_ACK,
+    MessageType.FAULT_REPORT, MessageType.EVENT_REPORT,
+})
+_PRIVILEGED_TYPES = frozenset({MessageType.CONTROL_COMMAND,
+                             MessageType.CONFIG_WRITE, MessageType.TIME_SYNC})
+
+
 def encode_payload(message_type: MessageType, fields: Mapping[str, object]) -> bytes:
-    return MessageCodec.encode(message_type, fields)
+    from ..enums import ConfiguredMode, Role, TimeSyncState
+    try:
+        body = MessageCodec.encode(message_type, fields)
+        extra = bytearray()
+        if message_type in _RESPONSE_TYPES:
+            extra += struct.pack('>i', int(fields.get('request_sequence', -1)))
+        if message_type in _PRIVILEGED_TYPES:
+            actor = fields.get('actor')
+            extra += bytes([actor is not None])
+            if actor is not None:
+                extra += _pack_str(actor.actor_id)
+                extra += bytes([_enum_code(Role, actor.role, 'role'), actor.authenticated])
+        if message_type is MessageType.CONFIG_ACK:
+            extra += _encode_config_write({'config_version': fields['config_version'],
+                                          'parameters': fields.get('parameters', {})})
+        if message_type is MessageType.CONTROL_ACK:
+            extra += bytes([
+                _enum_code(OperatingMode, fields.get('effective_mode', OperatingMode.AUTO_SENSOR), 'effective_mode'),
+                _enum_code(OverrideState, fields.get('active_override', OverrideState.NONE), 'active_override'),
+                _enum_code(ConfiguredMode, fields.get('configured_mode', ConfiguredMode.AUTO_SENSOR), 'configured_mode'),
+            ])
+            extra += struct.pack('>d', float(fields.get('energy', -1)))
+        if message_type is MessageType.MEASUREMENT_REQUEST:
+            extra += struct.pack('>q', int(fields.get('confirmed_record_sequence', 0)))
+        if message_type is MessageType.MEASUREMENT_RESPONSE:
+            extra += struct.pack('>q', int(fields.get('record_sequence', 0)))
+        if message_type is MessageType.EVENT_REPORT:
+            extra += _pack_str(str(fields.get('actor') or ''))
+        if message_type is MessageType.MEASUREMENT_RESPONSE:
+            extra += bytes([_enum_code(TimeSyncState, fields.get('time_sync_state', TimeSyncState.UNCERTAIN), 'time_sync_state'),
+                            int(fields.get('available_mask', 63))])
+        return struct.pack('>H', len(body)) + body + extra
+    except (ValueError, TypeError, OverflowError, struct.error, KeyError) as exc:
+        raise ProtocolError('invalid %s payload: %s' % (message_type.value, exc)) from exc
 
 
 def decode_payload(message_type: MessageType, payload: bytes) -> Dict[str, object]:
-    return MessageCodec.decode(message_type, payload)
+    from ..authorization import Actor
+    from ..enums import ConfiguredMode, Role, TimeSyncState
+    try:
+        if len(payload) < 2:
+            # Empty requests have no data; preserve the bus request convention.
+            if payload == b'' and _CODECS[message_type][1] is _decode_empty:
+                return {}
+            raise ProtocolError('missing payload envelope')
+        length = struct.unpack_from('>H', payload)[0]
+        if len(payload) < length + 2:
+            raise ProtocolError('truncated payload body')
+        body = payload[2:2 + length]
+        fields = MessageCodec.decode(message_type, body)
+        if MessageCodec.encode(message_type, fields) != body:
+            raise ProtocolError('noncanonical or trailing payload body')
+        extra = payload[2 + length:]
+        pos = 0
+        if message_type in _RESPONSE_TYPES:
+            fields['request_sequence'] = struct.unpack_from('>i', extra, pos)[0]
+            pos += 4
+        if message_type in _PRIVILEGED_TYPES:
+            present = extra[pos]
+            pos += 1
+            fields['actor'] = None
+            if present:
+                actor_id, pos = _unpack_str(extra, pos)
+                fields['actor'] = Actor(actor_id, list(Role)[extra[pos]], bool(extra[pos + 1]))
+                pos += 2
+        if message_type is MessageType.CONFIG_ACK:
+            fields['parameters'] = _decode_config_write(extra[pos:])['parameters']
+        if message_type is MessageType.CONTROL_ACK:
+            fields.update(effective_mode=list(OperatingMode)[extra[pos]],
+                          active_override=list(OverrideState)[extra[pos + 1]],
+                          configured_mode=list(ConfiguredMode)[extra[pos + 2]],
+                          energy=struct.unpack_from('>d', extra, pos + 3)[0])
+        if message_type is MessageType.MEASUREMENT_REQUEST:
+            fields['confirmed_record_sequence'] = struct.unpack_from('>q', extra, pos)[0]
+            pos += 8
+        if message_type is MessageType.MEASUREMENT_RESPONSE:
+            fields['record_sequence'] = struct.unpack_from('>q', extra, pos)[0]
+            pos += 8
+        if message_type is MessageType.EVENT_REPORT:
+            actor_id, _ = _unpack_str(extra, pos)
+            fields['actor'] = actor_id or None
+        if message_type is MessageType.MEASUREMENT_RESPONSE:
+            fields['time_sync_state'] = list(TimeSyncState)[extra[pos]]
+            fields['available_mask'] = extra[pos + 1]
+        if encode_payload(message_type, fields) != payload:
+            raise ProtocolError('noncanonical or trailing payload metadata')
+        return fields
+    except (IndexError, ValueError, TypeError, KeyError, struct.error, UnicodeError, ValidationError) as exc:
+        raise ProtocolError('malformed %s payload: %s' % (message_type.value, exc)) from exc

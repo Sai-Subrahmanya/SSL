@@ -139,7 +139,12 @@ class MeasurementValidator:
             )
 
         # power ~= voltage * current consistency (physical sanity, not accuracy)
-        consistent = True
+        from math import isfinite
+        bad_numbers = any(v is not None and (not isfinite(v) or v < 0)
+                          for v in (voltage, current, power, light))
+        consistent = not bad_numbers
+        if bad_numbers:
+            issues.append("nonfinite or negative measurement")
         if voltage is not None and current is not None and power is not None:
             expected = voltage * current
             tolerance = max(abs(expected), 1.0) * cfg.power_consistency_tolerance

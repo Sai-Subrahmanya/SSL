@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ..authorization import Actor, AuthorizationService
 from ..comm.bus import BusEndpoint, InMemoryBus
-from ..comm.frame import Frame
+from ..comm.frame import Frame, PROTOCOL_VERSION, MASTER_ADDRESS
 from ..comm.state_machine import CommunicationStateMachine
 from ..command import Command, CommandRecord, CommandService
 from ..configuration import LampConfiguration
@@ -25,6 +25,8 @@ from ..diagnostics import DiagnosticEngine, DiagnosticEvidence, DiagnosticResult
 from ..enums import (
     Action,
     CommandType,
+    CommandState,
+    Role,
     CommunicationStatus,
     ConfiguredMode,
     ControlSubtype,
@@ -37,8 +39,9 @@ from ..enums import (
     OverrideState,
     RecordType,
     SensorStatus,
+    OperatingMode,
 )
-from ..errors import ConfigurationError
+from ..errors import ConfigurationError, ProtocolError, AuthorizationError, ValidationError, StorageError
 from ..event import Event, EventLog
 from ..fault import Fault, FaultEngine
 from ..identity import BusAddress, DeviceIdentity, Identifier
@@ -90,11 +93,14 @@ class LampNode(BusEndpoint):
                 "configuration bus address %s does not match node address %s"
                 % (int(config.bus_address), int(bus_address))
             )
+        if (config.site_id, config.group_id, config.product_id) != (identity.site_id, identity.group_id, identity.product_id):
+            raise ConfigurationError("configuration identity hierarchy mismatch")
         self.identity = identity
         self.bus_address = bus_address
-        self.config = config
         self.clock = clock or LogicalClock()
         self.bus = bus
+        if ticks_per_hour <= 0:
+            raise ConfigurationError("ticks_per_hour must be positive")
         self.ticks_per_hour = ticks_per_hour
 
         self.time = TimeModel(clock=self.clock, device_id=identity.device_id)
@@ -106,7 +112,7 @@ class LampNode(BusEndpoint):
         self.notifications = NotificationEngine(config, on_event=self._on_fault_event)
         self.storage = RecordStore(
             capacity=storage_capacity,
-            retention=RetentionPolicy(),
+            retention=RetentionPolicy(config.automatic_deletion, config.minimum_retention_ticks),
             on_delete=self._on_record_deleted,
         )
         self.comm = CommunicationStateMachine(retry_limit=config.comm_retry_count)
@@ -118,6 +124,12 @@ class LampNode(BusEndpoint):
             on_event=self._on_command_event,
         )
 
+        self._config_version = 0
+        from ..comm.sequence import SequenceTracker
+        self._request_sequences = SequenceTracker()
+        self._request_cache = {}
+        self._remote_commands = {}
+        self._command_measurements = {}
         self._energy = 0.0
         self._measurement_sequence = 0
         self._measurements: List[Measurement] = []
@@ -129,6 +141,8 @@ class LampNode(BusEndpoint):
         self._comm_status = CommunicationStatus.COMM_HEALTHY
         self._incoming: List[Frame] = []
         self._reported_events: Dict[int, bool] = {}
+        self._sent_events = set()
+        self._sent_measurement_records = set()
 
         if bus is not None:
             bus.attach(int(bus_address), self)
@@ -136,6 +150,14 @@ class LampNode(BusEndpoint):
     # ------------------------------------------------------------------
     # identity
     # ------------------------------------------------------------------
+    @property
+    def config(self) -> LampConfiguration:
+        return self.control.config
+
+    @config.setter
+    def config(self, value: LampConfiguration) -> None:
+        self.control.config = value
+
     @property
     def lamp_id(self) -> Identifier:
         return self.identity.lamp_id or self.identity.device_id
@@ -163,6 +185,9 @@ class LampNode(BusEndpoint):
     def start(self, ticks: Optional[int] = None) -> None:
         """Start the node, restoring the configured restart state."""
         ticks = self.clock.ticks if ticks is None else ticks
+        for record in self.commands.records:
+            if record.state in (CommandState.RECEIVED, CommandState.EXECUTED, CommandState.ACKNOWLEDGED):
+                self.commands.advance(record, CommandState.FAILED, ticks, "node restarted before verification")
         self.control.apply_override(OverrideState.NONE)
         self._apply_restart_default(ticks)
         self._record_event(
@@ -176,6 +201,9 @@ class LampNode(BusEndpoint):
     def restart(self, ticks: Optional[int] = None) -> None:
         """Simulate a watchdog reset / restart (``PR-CONTROL-005``)."""
         ticks = self.clock.ticks if ticks is None else ticks
+        for record in self.commands.records:
+            if record.state in (CommandState.RECEIVED, CommandState.EXECUTED, CommandState.ACKNOWLEDGED):
+                self.commands.advance(record, CommandState.FAILED, ticks, "node restarted before verification")
         self.control.apply_override(OverrideState.NONE)
         self._apply_restart_default(ticks)
         self._record_event(
@@ -230,11 +258,17 @@ class LampNode(BusEndpoint):
     # ------------------------------------------------------------------
     def step(self, sources: LampNodeSources, ticks: Optional[int] = None) -> ControlDecision:
         """Run one deterministic control/measurement/diagnostic cycle."""
-        ticks = self.clock.ticks if ticks is None else ticks
-        self.time.advance(self.config.measurement_interval_ticks)
+        if ticks is None:
+            self.time.advance(self.config.measurement_interval_ticks)
+        else:
+            if ticks < self.clock.ticks:
+                raise ValidationError("sample time cannot move backwards")
+            self.time.advance(ticks - self.clock.ticks)
+        ticks = self.clock.ticks
 
         previous_state = self.control.lamp_is_on
-        decision = self.control.decide(sources.light_level, ticks)
+        light = sources.light_level if sources.sensor_status is SensorStatus.VALID else None
+        decision = self.control.decide(light, ticks)
         self._last_decision = decision
         self._emit_control_events(decision, previous_state, ticks)
 
@@ -242,6 +276,7 @@ class LampNode(BusEndpoint):
         measurement = self._build_measurement(sources, decision, ticks)
         self._measurements.append(measurement)
         self._last_measurement = measurement
+        self.commands.verify_pending(ticks)
 
         assessment = self.validator.assess(measurement)
         self._last_assessment = assessment
@@ -286,7 +321,8 @@ class LampNode(BusEndpoint):
         return decision
 
     def _accumulate_energy(self, sources: LampNodeSources, ticks: int) -> None:
-        if sources.power is None:
+        from math import isfinite
+        if sources.power is None or not isfinite(sources.power) or sources.power < 0:
             return
         self._energy += (
             sources.power * self.config.measurement_interval_ticks / self.ticks_per_hour
@@ -364,6 +400,13 @@ class LampNode(BusEndpoint):
         scenario or the group controller) puts them on the bus.
         """
         responses: List[Frame] = []
+        for command_id, (request, last_state) in list(self._remote_commands.items()):
+            record = self.commands.get(command_id)
+            if record.state is CommandState.ACKNOWLEDGED and self.clock.ticks >= record.received_ticks + self.config.comm_timeout_ticks * (self.config.comm_retry_count + 1):
+                self.commands.advance(record, CommandState.FAILED, self.clock.ticks, "actual-state evidence timeout")
+            if record.state is not last_state:
+                responses.append(self._control_ack(request, record))
+                self._remote_commands[command_id] = (request, record.state)
         while self._incoming:
             frame = self._incoming.pop(0)
             response = self._handle_frame(frame)
@@ -372,18 +415,41 @@ class LampNode(BusEndpoint):
         return responses
 
     def _handle_frame(self, frame: Frame) -> Optional[Frame]:
+        from ..comm.protocol import decode_payload
         try:
-            handler = self._HANDLERS[frame.message_type]
-        except KeyError:
-            self._record_event(
-                EventType.FRAME_REJECTED,
-                EventSource.COMMUNICATION,
-                EventSeverity.WARNING,
-                "unsupported message type %s" % frame.message_type.value,
-                ticks=self.clock.ticks,
-            )
+            if frame.protocol_version != PROTOCOL_VERSION or frame.destination != int(self.bus_address) or frame.source != MASTER_ADDRESS:
+                raise ProtocolError("invalid version, destination or master source")
+            if frame.message_type not in (MessageType.FAULT_REPORT, MessageType.EVENT_REPORT):
+                decode_payload(frame.message_type, frame.payload)
+            if frame.message_type is MessageType.EVENT_REPORT and len(frame.payload) not in (0, 4):
+                raise ProtocolError("event poll requires a 32-bit confirmation ID")
+            if frame.message_type is MessageType.FAULT_REPORT and frame.payload:
+                raise ProtocolError("fault poll requires an empty payload")
+            verdict = self._request_sequences.classify(frame.sequence)
+            if verdict != "new":
+                self._record_event(EventType.DUPLICATE_FRAME_DETECTED if verdict == "duplicate"
+                                   else EventType.STALE_FRAME_DETECTED, EventSource.COMMUNICATION,
+                                   EventSeverity.WARNING, verdict + " master request")
+                cached = self._request_cache.get(frame.sequence)
+                if verdict == "duplicate" and cached and cached[0] == frame:
+                    response = cached[1]
+                    fields = decode_payload(response.message_type, response.payload)
+                    return self._respond(frame, response.message_type, fields)
+                return None
+            handler = self._HANDLERS.get(frame.message_type)
+            if handler is None:
+                raise ProtocolError("unsupported request")
+            response = handler(self, frame)
+            if response is not None:
+                self._request_sequences.record(frame.sequence)
+                self._request_cache[frame.sequence] = (frame, response)
+                self._request_cache = {seq: value for seq, value in self._request_cache.items()
+                                       if seq in self._request_sequences.counts()}
+            return response
+        except (ProtocolError, ValidationError, StorageError, ValueError, TypeError, IndexError) as exc:
+            self._record_event(EventType.FRAME_REJECTED, EventSource.COMMUNICATION,
+                               EventSeverity.WARNING, str(exc))
             return None
-        return handler(self, frame)
 
     # -- handlers ---------------------------------------------------------
     def _handle_status_request(self, frame: Frame) -> Frame:
@@ -418,9 +484,50 @@ class LampNode(BusEndpoint):
     def _handle_measurement_request(self, frame: Frame) -> Optional[Frame]:
         if self._last_measurement is None:
             return None
+        from ..comm.protocol import decode_payload
+        from ..errors import StorageError
+        fields = decode_payload(MessageType.MEASUREMENT_REQUEST, frame.payload)
+        confirmed = fields.get('confirmed_record_sequence', 0)
+        if confirmed:
+            if confirmed not in self._sent_measurement_records:
+                raise ProtocolError("cannot confirm a measurement not sent")
+            try:
+                self.storage.mark_confirmed(confirmed)
+            except StorageError as exc:
+                raise ProtocolError(str(exc)) from exc
         m = self._last_measurement
+        record_sequence = 0
+        for record in self.storage.pending_upload:
+            if record.record_type is not RecordType.MEASUREMENT:
+                continue
+            if not record.is_valid():
+                self._record_event(EventType.RECORD_CORRUPT, EventSource.STORAGE,
+                                   EventSeverity.ERROR, "corrupt measurement excluded from upload",
+                                   data={"sequence_number": record.sequence})
+                continue
+            data = record.payload
+            m = Measurement(
+                timestamp=record.timestamp, site_id=Identifier(data['site_id']),
+                group_id=Identifier(data['group_id']), lamp_id=Identifier(data['lamp_id']),
+                effective_mode=OperatingMode(data['effective_mode']),
+                commanded_state=LampState(data['commanded_state']),
+                switching_feedback=LampState(data['switching_feedback']),
+                actual_state=LampState(data['actual_state']),
+                voltage=data['voltage'], current=data['current'], power=data['power'],
+                energy=data['energy'], light_level=data['light_level'],
+                sensor_status=SensorStatus(data['sensor_status']),
+                communication_status=CommunicationStatus(data['communication_status']),
+                controller_status=ControllerStatus(data['controller_status']),
+                sequence_number=data['sequence_number'])
+            self.storage.mark_uploaded(record.sequence)
+            self._sent_measurement_records.add(record.sequence)
+            record_sequence = record.sequence
+            break
         payload = {
+            "record_sequence": record_sequence,
             "timestamp_ticks": m.timestamp.ticks,
+            "time_sync_state": m.timestamp.sync_state,
+            "available_mask": sum(1 << i for i, v in enumerate((m.voltage, m.current, m.power, m.energy, m.light_level, m.timestamp.ticks)) if v is not None),
             "voltage_mv": int(round((m.voltage or 0.0) * 1000)),
             "current_ma": int(round((m.current or 0.0) * 1000)),
             "power_mw": int(round((m.power or 0.0) * 1000)),
@@ -442,7 +549,7 @@ class LampNode(BusEndpoint):
         fields = decode_payload(MessageType.CONTROL_COMMAND, frame.payload)
         command_id = str(fields["command_id"])
         subtype = fields["subtype"]
-        actor = Actor(actor_id="group-controller", role=_role_for_subtype(subtype))
+        actor = fields.get("actor") or Actor("anonymous-transport", Role.VIEWER, False)
 
         if subtype is ControlSubtype.RESET_ENERGY:
             command = Command(
@@ -490,12 +597,18 @@ class LampNode(BusEndpoint):
             )
 
         record = self.commands.submit(command, self.clock.ticks)
-        payload = {
-            "command_id": command_id,
-            "execution_status": record.state,
-            "actual_state": _commanded_state(self.control),
-        }
-        return self._respond(frame, MessageType.CONTROL_ACK, payload)
+        self._remote_commands[command_id] = (frame, record.state)
+        return self._control_ack(frame, record)
+
+    def _control_ack(self, frame: Frame, record: CommandRecord) -> Frame:
+        return self._respond(frame, MessageType.CONTROL_ACK, {
+            "command_id": record.command_id, "execution_status": record.state,
+            "actual_state": self._last_measurement.actual_state if self._last_measurement else LampState.UNKNOWN,
+            "effective_mode": self.control.effective_mode,
+            "active_override": self.control.active_override,
+            "configured_mode": self.control.configured_mode,
+            "energy": self._energy,
+        })
 
     def _handle_fault_report_request(self, frame: Frame) -> Optional[Frame]:
         active = self.faults.active_faults
@@ -514,13 +627,19 @@ class LampNode(BusEndpoint):
         return self._respond(frame, MessageType.FAULT_REPORT, payload)
 
     def _handle_event_report_request(self, frame: Frame) -> Optional[Frame]:
+        confirmed = int.from_bytes(frame.payload, 'big') if frame.payload else 0
+        if confirmed:
+            if confirmed not in self._sent_events:
+                raise ProtocolError("cannot confirm an event not sent")
+            self._reported_events[confirmed] = True
         pending = [e for e in self.events if not self._reported_events.get(e.event_id)]
         if not pending:
             return None
         event = pending[0]
-        self._reported_events[event.event_id] = True
+        self._sent_events.add(event.event_id)
         payload = {
             "event_id": event.event_id,
+            "actor": event.actor,
             "event_type": event.event_type,
             "severity": list(EventSeverity).index(event.severity),
             "reason": event.reason,
@@ -528,59 +647,55 @@ class LampNode(BusEndpoint):
         return self._respond(frame, MessageType.EVENT_REPORT, payload)
 
     def _handle_config_read(self, frame: Frame) -> Frame:
-        payload = {"config_version": self.config_version, "parameters": self._config_parameters()}
-        return self._respond(frame, MessageType.CONFIG_ACK, payload)
+        return self._respond(frame, MessageType.CONFIG_ACK, {
+            "config_version": self.config_version, "accepted": True,
+            "reason": "read", "parameters": self._config_parameters()})
 
     def _handle_config_write(self, frame: Frame) -> Frame:
         from ..comm.protocol import decode_payload
-
         fields = decode_payload(MessageType.CONFIG_WRITE, frame.payload)
-        parameters = fields.get("parameters", {})
+        version = fields["config_version"]
+        actor = fields.get("actor") or Actor("anonymous-transport", Role.VIEWER, False)
+        parameters = fields["parameters"]
+        previous = self._config_parameters()
         try:
-            new_config = self._apply_config_parameters(parameters)
-            new_config.validated()
-        except ConfigurationError as exc:
-            self._record_event(
-                EventType.CONFIG_REJECTED,
-                EventSource.CONFIGURATION,
-                EventSeverity.WARNING,
-                "configuration rejected: %s" % exc,
-                ticks=self.clock.ticks,
-            )
-            return self._respond(
-                frame,
-                MessageType.CONFIG_ACK,
-                {
-                    "config_version": self.config_version,
-                    "accepted": False,
-                    "reason": str(exc),
-                },
-            )
-        self.config = new_config
-        self.control.config = new_config
-        self.validator = MeasurementValidator(new_config)
-        self.diagnostics = DiagnosticEngine(new_config)
-        self.faults._config = new_config
-        self.faults._policy = type(self.faults._policy).from_config(new_config)
-        self.notifications._policy = type(self.notifications._policy).from_config(new_config)
-        self.config_version += 1
-        self._record_event(
-            EventType.CONFIG_CHANGED,
-            EventSource.CONFIGURATION,
-            EventSeverity.INFO,
-            "configuration updated: %s" % ", ".join(sorted(parameters)),
-            ticks=self.clock.ticks,
-        )
-        return self._respond(
-            frame,
-            MessageType.CONFIG_ACK,
-            {"config_version": self.config_version, "accepted": True, "reason": "applied"},
-        )
+            self._authorizer.require(actor, Action.CONFIGURE)
+            if version <= 0 or version <= self.config_version:
+                raise ConfigurationError("configuration version must be positive and newer")
+            new_config = self._apply_config_parameters(parameters).validated()
+        except (ConfigurationError, AuthorizationError, ValueError, TypeError, IndexError) as exc:
+            accepted, reason = False, str(exc)
+        else:
+            accepted, reason = True, "applied"
+            self.config = new_config
+            self.validator = MeasurementValidator(new_config)
+            self.diagnostics = DiagnosticEngine(new_config)
+            self.faults._config = new_config
+            self.faults._policy = type(self.faults._policy).from_config(new_config)
+            self.notifications._policy = type(self.notifications._policy).from_config(new_config)
+            self.storage.retention.automatic_deletion = new_config.automatic_deletion
+            self.storage.retention.minimum_retention_ticks = new_config.minimum_retention_ticks
+            self.comm._retry_limit = new_config.comm_retry_count
+            self.config_version = version
+        self._record_event(EventType.CONFIG_CHANGED if accepted else EventType.CONFIG_REJECTED,
+                           EventSource.CONFIGURATION, EventSeverity.INFO if accepted else EventSeverity.WARNING,
+                           reason, actor=actor.actor_id,
+                           data={"version": version, "previous": previous,
+                                 "requested": dict(parameters), "applied": self._config_parameters(),
+                                 "accepted": accepted})
+        return self._respond(frame, MessageType.CONFIG_ACK, {
+            "config_version": version, "accepted": accepted, "reason": reason,
+            "parameters": self._config_parameters()})
 
     def _handle_time_sync(self, frame: Frame) -> Frame:
         from ..comm.protocol import decode_payload
 
         fields = decode_payload(MessageType.TIME_SYNC, frame.payload)
+        actor = fields.get("actor") or Actor("anonymous-transport", Role.VIEWER, False)
+        if not self._authorizer.is_authorized(actor, Action.ADMINISTER):
+            self._record_event(EventType.COMMAND_REJECTED, EventSource.SECURITY, EventSeverity.WARNING,
+                               "time synchronization denied", actor=actor.actor_id)
+            return None
         master_ticks = int(fields["master_ticks"])
         self.time.synchronize(master_ticks)
         self._comm_status = CommunicationStatus.COMM_HEALTHY
@@ -631,6 +746,9 @@ class LampNode(BusEndpoint):
     # command execution / verification
     # ------------------------------------------------------------------
     def _execute_command(self, command: Command) -> Tuple[bool, str]:
+        if command.target != self.identity:
+            return False, "command target does not match node identity"
+        self._command_measurements[command.command_id] = self._measurement_sequence
         if command.command_type is CommandType.FORCE_ON:
             self.control.apply_override(OverrideState.FORCE_ON)
             self._record_event(
@@ -639,7 +757,7 @@ class LampNode(BusEndpoint):
                 EventSeverity.INFO,
                 "operator override FORCE_ON applied",
                 actor=command.actor.actor_id,
-                ticks=self.clock.ticks,
+                ticks=getattr(self.commands, "_event_ticks", self.clock.ticks),
             )
             return True, "override FORCE_ON applied"
         if command.command_type is CommandType.FORCE_OFF:
@@ -650,7 +768,7 @@ class LampNode(BusEndpoint):
                 EventSeverity.INFO,
                 "operator override FORCE_OFF applied",
                 actor=command.actor.actor_id,
-                ticks=self.clock.ticks,
+                ticks=getattr(self.commands, "_event_ticks", self.clock.ticks),
             )
             return True, "override FORCE_OFF applied"
         if command.command_type is CommandType.RETURN_TO_AUTO:
@@ -663,7 +781,7 @@ class LampNode(BusEndpoint):
                 "override released; effective mode is now %s"
                 % self.control.effective_mode.value,
                 actor=command.actor.actor_id,
-                ticks=self.clock.ticks,
+                ticks=getattr(self.commands, "_event_ticks", self.clock.ticks),
             )
             return True, "returned to automatic mode (was %s)" % (
                 "overridden" if had_override else "already automatic"
@@ -671,6 +789,8 @@ class LampNode(BusEndpoint):
         if command.command_type is CommandType.SET_MODE:
             if command.subtype is ControlSubtype.RESET_ENERGY:
                 self._authorizer.require(command.actor, Action.RESET_ENERGY)
+                if list(Role).index(command.actor.role) < list(Role).index(self.config.energy_reset_role):
+                    return False, "configured energy reset privilege required"
                 self._energy = 0.0
                 self._record_event(
                     EventType.ENERGY_RESET,
@@ -678,22 +798,28 @@ class LampNode(BusEndpoint):
                     EventSeverity.WARNING,
                     "accumulated energy reset by %s" % command.actor.actor_id,
                     actor=command.actor.actor_id,
-                    ticks=self.clock.ticks,
+                    ticks=getattr(self.commands, "_event_ticks", self.clock.ticks),
                 )
                 return True, "energy reset"
             mode_code = command.parameters.get("mode", 0)
             try:
+                if type(mode_code) is not int or not 0 <= mode_code < len(ConfiguredMode):
+                    return False, "unknown configured mode code"
                 mode = list(ConfiguredMode)[int(mode_code)]
             except (IndexError, ValueError, TypeError):
                 return False, "unknown configured mode code %r" % (mode_code,)
+            previous_mode = self.config.configured_mode
             self.control.set_configured_mode(mode)
+            self.config_version += 1
             self._record_event(
                 EventType.MODE_CHANGED,
                 EventSource.CONTROL,
                 EventSeverity.INFO,
                 "configured mode changed to %s" % mode.value,
+                data={"parameter": "configured_mode", "previous_value": previous_mode.value,
+                      "new_value": mode.value, "version": self.config_version},
                 actor=command.actor.actor_id,
-                ticks=self.clock.ticks,
+                ticks=getattr(self.commands, "_event_ticks", self.clock.ticks),
             )
             return True, "configured mode set to %s" % mode.value
         return False, "unsupported command type %s" % command.command_type.value
@@ -706,7 +832,20 @@ class LampNode(BusEndpoint):
                 if command.command_type is CommandType.FORCE_ON
                 else LampState.OFF
             )
-            actual = _commanded_state(self.control)
+            if self._measurement_sequence <= self._command_measurements.get(command.command_id, self._measurement_sequence):
+                return None, "waiting for post-command measurement"
+            m = self._last_measurement
+            if m is None or m.actual_state is LampState.UNKNOWN:
+                return None, "actual-state evidence unavailable"
+            if m.voltage is None or m.power is None or m.current is None:
+                return None, "electrical evidence unavailable"
+            if not self.validator.assess(m).physically_consistent:
+                return False, "electrical measurement evidence inconsistent"
+            if expected is LampState.ON and not _voltage_valid(m.voltage, self.config):
+                return False, "supply evidence invalid"
+            actual = m.actual_state
+            if m.commanded_state is not expected or m.controller_status is not ControllerStatus.NORMAL:
+                return False, "command superseded or controller/protection state inconsistent"
             if actual is expected:
                 return True, "actual state %s matches commanded state" % actual.value
             return False, "actual state %s does not match %s" % (actual.value, expected.value)
@@ -719,7 +858,8 @@ class LampNode(BusEndpoint):
                 if self._energy == 0.0:
                     return True, "energy accumulator is zero"
                 return False, "energy accumulator is %s" % self._energy
-            return True, "configured mode applied"
+            expected = list(ConfiguredMode)[int(command.parameters.get("mode", 0))]
+            return self.config.configured_mode is expected, "configured mode readback"
         return True, "no actual-state check required"
 
     # ------------------------------------------------------------------
@@ -773,6 +913,7 @@ class LampNode(BusEndpoint):
     def acknowledge_fault(
         self, fault_id: str, actor: Actor, ticks: Optional[int] = None
     ) -> Fault:
+        self._require_actor(actor, Action.ACKNOWLEDGE_FAULT)
         ticks = self.clock.ticks if ticks is None else ticks
         fault = self.faults.acknowledge(fault_id, actor.actor_id, ticks)
         self.notifications.acknowledge(fault, actor.actor_id)
@@ -781,12 +922,14 @@ class LampNode(BusEndpoint):
     def start_repair(
         self, fault_id: str, actor: Actor, ticks: Optional[int] = None
     ) -> Fault:
+        self._require_actor(actor, Action.START_REPAIR)
         ticks = self.clock.ticks if ticks is None else ticks
         return self.faults.start_repair(fault_id, actor.actor_id, ticks)
 
     def report_repaired(
         self, fault_id: str, actor: Actor, ticks: Optional[int] = None
     ) -> Fault:
+        self._require_actor(actor, Action.START_REPAIR)
         ticks = self.clock.ticks if ticks is None else ticks
         return self.faults.report_repaired(fault_id, actor.actor_id, ticks)
 
@@ -798,6 +941,7 @@ class LampNode(BusEndpoint):
         ticks: Optional[int] = None,
         evidence: Optional[Dict[str, object]] = None,
     ) -> Fault:
+        self._require_actor(actor, Action.VERIFY_REPAIR)
         ticks = self.clock.ticks if ticks is None else ticks
         return self.faults.verify(
             fault_id, actor.actor_id, ticks, verified=verified, evidence=evidence
@@ -806,6 +950,15 @@ class LampNode(BusEndpoint):
     # ------------------------------------------------------------------
     # internals
     # ------------------------------------------------------------------
+    def _require_actor(self, actor: Actor, action: Action) -> None:
+        try:
+            self._authorizer.require(actor, action)
+        except AuthorizationError:
+            self._record_event(EventType.COMMAND_REJECTED, EventSource.SECURITY,
+                               EventSeverity.WARNING, "unauthorized " + action.value,
+                               actor=actor.actor_id)
+            raise
+
     def _submit(
         self,
         command_type: CommandType,
@@ -837,7 +990,8 @@ class LampNode(BusEndpoint):
     def _respond(self, request: Frame, message_type: MessageType, payload: dict) -> Frame:
         from ..comm.protocol import encode_payload
 
-        self._sequence = getattr(self, "_sequence", 0) + 1
+        self._sequence = (getattr(self, "_sequence", 0) + 1) & 0xFFFF
+        payload = dict(payload, request_sequence=request.sequence)
         return Frame(
             source=int(self.bus_address),
             destination=request.source,
@@ -905,17 +1059,19 @@ class LampNode(BusEndpoint):
             EventSource.STORAGE,
             EventSeverity.WARNING,
             "record %d deleted by %s" % (record.sequence_number, actor),
-            ticks=ticks,
+            ticks=ticks, actor=actor, data={"sequence_number": record.sequence_number},
         )
 
     def _on_fault_event(self, kind: str, fault: Fault, reason: str) -> None:
         mapping = {
+            "FAULT_TRANSITION_REJECTED": (EventType.FAULT_TRANSITION_REJECTED, EventSeverity.WARNING),
             "FAULT_SUSPECTED": (EventType.FAULT_SUSPECTED, EventSeverity.WARNING),
             "FAULT_CONFIRMED": (EventType.FAULT_CONFIRMED, EventSeverity.ERROR),
             "FAULT_ACKNOWLEDGED": (EventType.FAULT_ACKNOWLEDGED, EventSeverity.INFO),
             "FAULT_REMINDER_DUE": (EventType.FAULT_REMINDER_DUE, EventSeverity.WARNING),
             "FAULT_ESCALATED": (EventType.FAULT_ESCALATED, EventSeverity.ERROR),
-            "FAULT_NOTIFIED": (EventType.FAULT_CONFIRMED, EventSeverity.INFO),
+            "FAULT_NOTIFIED": (EventType.FAULT_NOTIFIED, EventSeverity.INFO),
+            "FAULT_REPAIR_REPORTED": (EventType.FAULT_REPAIR_REPORTED, EventSeverity.INFO),
             "FAULT_NOTIFICATION_FAILED": (
                 EventType.FAULT_NOTIFICATION_FAILED,
                 EventSeverity.ERROR,
@@ -928,12 +1084,16 @@ class LampNode(BusEndpoint):
             "FAULT_CLOSED": (EventType.FAULT_CLOSED, EventSeverity.INFO),
         }
         event_type, severity = mapping.get(kind, (EventType.FAULT_SUSPECTED, EventSeverity.INFO))
+        notification_event = kind in ("FAULT_REMINDER_DUE", "FAULT_ESCALATED", "FAULT_NOTIFIED", "FAULT_NOTIFICATION_FAILED")
+        event_engine = self.notifications if notification_event else self.faults
         event = self._record_event(
             event_type,
             EventSource.FAULT,
             severity,
             reason,
             related_fault_id=fault.fault_id,
+            actor=None if notification_event else getattr(self.faults, "_event_actor", None),
+            ticks=getattr(event_engine, "_event_ticks", self.clock.ticks),
             data={
                 "fault_type": fault.fault_type.value,
                 "diagnostic_classification": fault.diagnostic_classification.value,
@@ -972,6 +1132,7 @@ class LampNode(BusEndpoint):
                 reason,
             ),
             actor=record.command.actor.actor_id,
+            ticks=getattr(self.commands, "_event_ticks", self.clock.ticks),
             data={"command_type": record.command.command_type.value},
         )
 
@@ -980,7 +1141,7 @@ class LampNode(BusEndpoint):
     # ------------------------------------------------------------------
     @property
     def config_version(self) -> int:
-        return getattr(self, "_config_version", 1)
+        return self._config_version
 
     @config_version.setter
     def config_version(self, value: int) -> None:
@@ -992,6 +1153,8 @@ class LampNode(BusEndpoint):
             "configured_mode": list(ConfiguredMode).index(cfg.configured_mode),
             "light_on_threshold": int(cfg.light_on_threshold),
             "light_off_threshold": int(cfg.light_off_threshold),
+            "light_hysteresis": int(cfg.light_hysteresis),
+            "minimum_retention_ticks": cfg.minimum_retention_ticks if cfg.minimum_retention_ticks is not None else -1,
             "measurement_interval_ticks": cfg.measurement_interval_ticks,
             "reporting_interval_ticks": cfg.reporting_interval_ticks,
             "fault_confirmation_count": cfg.fault_confirmation_count,
@@ -1004,16 +1167,20 @@ class LampNode(BusEndpoint):
 
     def _apply_config_parameters(self, parameters: Dict[str, int]) -> LampConfiguration:
         updates: Dict[str, object] = {}
+        allowed = self._config_parameters()
         for key, value in parameters.items():
-            if key == "configured_mode":
-                updates["configured_mode"] = list(ConfiguredMode)[int(value)]
-            elif key in (
-                "light_on_threshold",
-                "light_off_threshold",
-            ):
-                updates[key] = float(value)
+            if key not in allowed:
+                raise ConfigurationError("unsupported remote configuration parameter %s" % key)
+            if key == "minimum_retention_ticks":
+                if value < -1:
+                    raise ConfigurationError("invalid minimum retention")
+                updates[key] = None if value == -1 else value
+            elif key == "configured_mode":
+                if not 0 <= value < len(ConfiguredMode):
+                    raise ConfigurationError("invalid configured_mode")
+                updates[key] = list(ConfiguredMode)[value]
             else:
-                updates[key] = int(value)
+                updates[key] = value
         return replace(self.config, **updates)
 
     # ------------------------------------------------------------------
@@ -1033,6 +1200,7 @@ class LampNode(BusEndpoint):
             "stored_records": len(self.storage),
             "pending_upload": len(self.storage.pending_upload),
             "events": len(self.events),
+            "storage_full": self.storage.is_full,
         }
 
     def set_communication_status(self, status: CommunicationStatus) -> None:
@@ -1056,7 +1224,8 @@ def _derive_actual_state(
     switching_feedback: LampState, current: Optional[float], config: LampConfiguration
 ) -> LampState:
     """Derive the observed lamp state from switching feedback and current."""
-    if switching_feedback is LampState.UNKNOWN:
+    from math import isfinite
+    if switching_feedback is LampState.UNKNOWN or current is None or not isfinite(current) or current < 0:
         return LampState.UNKNOWN
     if switching_feedback is LampState.ON:
         if current is not None and current >= config.unexpected_current_min:
@@ -1066,11 +1235,3 @@ def _derive_actual_state(
     if current is None or current < config.unexpected_current_min:
         return LampState.OFF
     return LampState.UNKNOWN
-
-
-def _role_for_subtype(subtype: ControlSubtype):
-    from ..enums import Role
-
-    if subtype is ControlSubtype.RESET_ENERGY:
-        return Role.ENGINEER
-    return Role.OPERATOR

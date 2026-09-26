@@ -27,11 +27,14 @@ from conftest import healthy_sources
 # --------------------------------------------------------------------------
 def test_command_lifecycle_reaches_actual_state_verified(lamp_node, operator):
     record = lamp_node.force_on(operator, ticks=1000)
+    assert record.state is CommandState.ACKNOWLEDGED
+    assert not record.succeeded
+    lamp_node.step(healthy_sources(), ticks=2000)
     assert record.state is CommandState.ACTUAL_STATE_VERIFIED
     assert record.received_ticks == 1000
     assert record.executed_ticks == 1000
     assert record.acknowledged_ticks == 1000
-    assert record.verified_ticks == 1000
+    assert record.verified_ticks == 2000
     assert record.succeeded is True
 
 
@@ -90,6 +93,8 @@ def lamp_target():
 # --------------------------------------------------------------------------
 def test_duplicate_command_is_not_executed_twice(lamp_node, operator):
     first = lamp_node.force_on(operator, ticks=1000)
+    assert not first.succeeded
+    lamp_node.step(healthy_sources(), ticks=1500)
     assert first.succeeded is True
 
     # Same command id submitted again: must not re-execute the action.

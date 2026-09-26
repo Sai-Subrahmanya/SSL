@@ -418,3 +418,13 @@ they block:
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
 - [requirements_traceability.md](requirements_traceability.md)
+
+## Corrective audit disposition (2026-09-26)
+
+A-09 and A-10 remain open: deterministic capacity failure is not a selected
+storage-full policy or retention duration. A-18 remains an abstract diagnostic
+input requiring a physical implementation decision. A-26 remains a hardware
+validation item. A-27 remains an accepted deferral of the detailed production
+permission matrix; correcting preliminary authorization bypasses does not
+resolve that matrix. A-29 remains open; supplied retention floors are enforced
+without selecting a default period. No assumption status changed in this pass.

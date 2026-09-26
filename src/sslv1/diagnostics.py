@@ -116,8 +116,15 @@ class DiagnosticEngine:
                 evidence,
             )
 
+        from math import isfinite
+        if any(v is not None and (not isfinite(v) or v < 0)
+               for v in (evidence.voltage, evidence.current, evidence.power)):
+            return self._result(DiagnosticClassification.MEASUREMENT_ABNORMALITY,
+                                FaultType.UNKNOWN, Confidence.LOW,
+                                "nonfinite or negative electrical evidence", evidence)
+
         # 3. Supply problem: commanded ON but no valid supply voltage.
-        if evidence.commanded_state is LampState.ON and not evidence.voltage_valid:
+        if evidence.commanded_state is LampState.ON and (not evidence.voltage_valid or evidence.voltage is None or not cfg.voltage_min <= evidence.voltage <= cfg.voltage_max):
             return self._result(
                 DiagnosticClassification.SUPPLY_ABNORMALITY,
                 FaultType.SUPPLY_VOLTAGE,
@@ -185,6 +192,7 @@ class DiagnosticEngine:
             and evidence.current is not None
             and evidence.current <= cfg.under_current_min
             and evidence.light_level is not None
+            and evidence.sensor_status is SensorStatus.VALID
             and evidence.light_level >= cfg.light_off_threshold
         ):
             return self._result(
@@ -266,7 +274,8 @@ class DiagnosticEngine:
             )
 
         # 12. Evidence insufficient to classify (for example no switching feedback).
-        if not evidence.switching_path_known:
+        if (not evidence.switching_path_known or evidence.commanded_state is LampState.UNKNOWN
+                or evidence.current is None or evidence.voltage is None or evidence.power is None):
             return self._result(
                 DiagnosticClassification.INSUFFICIENT_EVIDENCE,
                 FaultType.INSPECTION_REQUIRED,
@@ -301,13 +310,19 @@ class DiagnosticEngine:
             evidence=evidence,
         )
 
-def evidence_from_measurement(measurement) -> DiagnosticEvidence:
+def evidence_from_measurement(measurement, config=None) -> DiagnosticEvidence:
     """Build diagnostic evidence from a measurement.
 
     Kept as a free function so that the diagnostics layer never imports the
     measurement module's validator (avoids a circular dependency and keeps the
     engine testable in isolation).
     """
+    from .measurement import MeasurementValidator
+    valid_voltage = measurement.voltage_present
+    consistent = False
+    if config is not None:
+        valid_voltage = valid_voltage and config.voltage_min <= measurement.voltage <= config.voltage_max
+        consistent = MeasurementValidator(config).assess(measurement).physically_consistent
     return DiagnosticEvidence(
         commanded_state=measurement.commanded_state,
         switching_feedback=measurement.switching_feedback,
@@ -318,6 +333,6 @@ def evidence_from_measurement(measurement) -> DiagnosticEvidence:
         sensor_status=measurement.sensor_status,
         communication_status=measurement.communication_status,
         controller_status=measurement.controller_status,
-        voltage_valid=measurement.voltage_present,
-        power_consistent=True,
+        voltage_valid=valid_voltage,
+        power_consistent=consistent,
     )
