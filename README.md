@@ -360,7 +360,7 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Engineering decision log | 40 decisions recorded |
 | Requirements traceability | Regenerated: 85 `VERIFIED`, 0 `IMPLEMENTED`, 3 `PLANNED` |
 | Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (299 tests, all passing) |
+| Deterministic test suite | Implemented in `tests/` (302 tests, all passing) |
 | Physical validation | **Not started** - requires hardware |
 
 "Digital prototype" status means deterministic software behaviour has been

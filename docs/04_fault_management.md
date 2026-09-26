@@ -265,14 +265,11 @@ fault remains `CONFIRMED` while its notification state advances.
 
 ### 8.1 Notification state machine
 
-```text
-NOT_REQUIRED
-PENDING -> SENT -> ACK_PENDING -> ACKNOWLEDGED (terminal for this fault)
-                  |    ^
-                  |    +--> reminder interval elapsed -> REMINDER_DUE
-                  +--> escalation timeout reached -> ESCALATED
-                  +--> delivery failure -> DELIVERY_FAILED
-```
+`ACKNOWLEDGED` is **not** a notification state. It is a *fault lifecycle*
+state (`CONFIRMED -> ACKNOWLEDGED`). Acknowledgement is recorded as an event
+and moves the fault lifecycle; it leaves `notification_state` unchanged. The
+seven notification states are exactly those listed in `docs/03_data_model.md`
+section 4.
 
 | State | Meaning |
 | --- | --- |
@@ -284,32 +281,64 @@ PENDING -> SENT -> ACK_PENDING -> ACKNOWLEDGED (terminal for this fault)
 | `ESCALATED` | Escalation timeout reached; escalated to the configured destination/role. |
 | `DELIVERY_FAILED` | Notification could not be delivered. |
 
+Permitted transitions (`src/sslv1/notification.py`,
+`NotificationLifecycle.TRANSITIONS`):
+
+| From | To | Trigger |
+| --- | --- | --- |
+| `PENDING` | `SENT` | Delivery attempted. |
+| `PENDING` | `DELIVERY_FAILED` | Delivery failed. |
+| `SENT` | `ACK_PENDING` | Delivered; awaiting acknowledgement. |
+| `SENT` | `DELIVERY_FAILED` | Delivery failed. |
+| `ACK_PENDING` | `REMINDER_DUE` | Reminder interval elapsed. |
+| `ACK_PENDING` | `ESCALATED` | Escalation timeout reached. |
+| `ACK_PENDING` | `DELIVERY_FAILED` | Delivery failed. |
+| `REMINDER_DUE` | `ESCALATED` | Escalation timeout reached. |
+| `REMINDER_DUE` | `DELIVERY_FAILED` | Delivery failed. |
+| `REMINDER_DUE` | `ACK_PENDING` | Re-notified and awaiting acknowledgement. |
+| `ESCALATED` | `ACK_PENDING` | Re-notified and awaiting acknowledgement. |
+| `ESCALATED` | `DELIVERY_FAILED` | Delivery failed. |
+| `DELIVERY_FAILED` | `PENDING` | Retry scheduled (attempts remain). |
+| `DELIVERY_FAILED` | `ESCALATED` | Retries exhausted. |
+
+`SENT` is reachable only from `PENDING`: `notify()` moves `SENT ->
+ACK_PENDING` atomically, so no fault rests in `SENT`, and `DELIVERY_FAILED`
+routes its retries through `PENDING`. Any other source for `SENT` is an
+illegal transition.
+
 ### 8.2 Flow
 
 ```text
 CONFIRMED (fault lifecycle)
    + notification_state: PENDING -> SENT -> ACK_PENDING
-        +--> reminder interval elapsed -> REMINDER_DUE -> (re-send) -> ACK_PENDING
+        +--> reminder interval elapsed  -> REMINDER_DUE
         +--> escalation timeout reached -> ESCALATED
-        +--> delivery failure -> DELIVERY_FAILED
-        +--> acknowledgement -> terminal
+        +--> delivery failure           -> DELIVERY_FAILED -> PENDING (retry)
 ```
 
-### 8.2 Configurable parameters
+Once the reminder interval has elapsed the notification rests in
+`REMINDER_DUE` until it is acknowledged, escalated or fails delivery. It is
+**not** re-sent on every control cycle: a single reminder is issued, and
+re-entering `REMINDER_DUE` is an illegal transition.
+
+### 8.3 Configurable parameters
 
 | Parameter | Purpose |
 | --- | --- |
-| Reminder interval | How often an unacknowledged notification is repeated. |
+| Reminder interval | How long an unacknowledged notification waits before a reminder is issued. |
 | Escalation timeout | When an unacknowledged notification escalates. |
 | Escalation destination | Where the escalation is sent. |
+| Notification retry count | Delivery attempts before the notification rests in `DELIVERY_FAILED`. |
 
-### 8.3 Acknowledgement is not a cure
+### 8.4 Acknowledgement is not a cure
 
 Acknowledging a fault records operator awareness. It does **not** close the
 fault, does not clear evidence, and does not change lamp operation
-(`PR-FAULT-008`).
+(`PR-FAULT-008`). Acknowledgement is recorded on the **fault lifecycle**
+(`CONFIRMED -> ACKNOWLEDGED`) and emitted as a `FAULT_ACKNOWLEDGED` event; the
+notification state is left unchanged.
 
-### 8.4 Unacknowledged alerts never switch the lamp OFF
+### 8.5 Unacknowledged alerts never switch the lamp OFF
 
 Failure to acknowledge shall not, by itself, cause the lamp to be switched
 OFF (`PR-FAULT-009`).

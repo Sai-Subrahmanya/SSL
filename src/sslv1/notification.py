@@ -131,12 +131,12 @@ class NotificationEngine:
         if not delivered:
             return self.delivery_failed(fault, ticks)
 
-        if fault.notification_state in (
-            NotificationState.PENDING,
-            NotificationState.REMINDER_DUE,
-            NotificationState.ESCALATED,
-            NotificationState.DELIVERY_FAILED,
-        ):
+        # ``SENT`` is reachable only from ``PENDING``. ``delivery_failed()``
+        # routes a retry through ``PENDING``, so a retry arrives here in
+        # ``PENDING``. The other waiting states (``REMINDER_DUE``,
+        # ``ESCALATED``, ``DELIVERY_FAILED``) have no legal transition to
+        # ``SENT``; attempting one from them raises IllegalTransitionError.
+        if fault.notification_state is NotificationState.PENDING:
             NotificationLifecycle.transition(
                 fault,
                 NotificationState.SENT,
@@ -152,6 +152,19 @@ class NotificationEngine:
     def delivery_failed(self, fault: Fault, ticks: int) -> NotificationState:
         attempts = self._delivery_attempts.get(fault.fault_id, 0) + 1
         self._delivery_attempts[fault.fault_id] = attempts
+        if fault.notification_state is NotificationState.DELIVERY_FAILED:
+            # Retries are already exhausted: the notification rests in
+            # DELIVERY_FAILED and re-entering that state is not a legal
+            # transition. The attempt is still counted and reported, but the
+            # state is left alone. Without this guard a retry loop that keeps
+            # reporting failures raises IllegalTransitionError on the first
+            # call past the retry limit.
+            self._emit(
+                "FAULT_NOTIFICATION_FAILED",
+                fault,
+                "delivery attempt %d failed" % attempts,
+            )
+            return fault.notification_state
         NotificationLifecycle.transition(
             fault, NotificationState.DELIVERY_FAILED, "delivery failed"
         )

@@ -601,3 +601,84 @@ def test_notification_tick_is_legal_from_every_resting_state(lamp_node):
         for elapsed in (0, 1, 30_000, 120_000, 500_000):
             engine._last_notified[fault.fault_id] = 0
             engine.tick(fault, ticks=elapsed)  # must not raise
+
+
+# --------------------------------------------------------------------------
+# Notification delivery-failure handling
+#
+# Regression: delivery_failed() unconditionally transitioned the fault to
+# DELIVERY_FAILED. Once the configured retry limit was exhausted the fault
+# rested in DELIVERY_FAILED, so the next call attempted
+# DELIVERY_FAILED -> DELIVERY_FAILED, which the state machine forbids, and
+# raised IllegalTransitionError. A retry loop that keeps reporting failures
+# crashed on the first call past the limit.
+#
+# The same class of defect existed in notify(): it listed REMINDER_DUE,
+# ESCALATED and DELIVERY_FAILED as sources for SENT, none of which the state
+# machine permits. SENT is reachable only from PENDING, and delivery_failed()
+# routes retries through PENDING, so notify() now only sends from PENDING.
+# --------------------------------------------------------------------------
+def test_delivery_failure_beyond_retry_limit_does_not_crash(lamp_node):
+    """Reporting delivery failures past the retry limit must not raise."""
+    for index in range(6):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    fault = lamp_node.faults.active_faults[0]
+    engine = lamp_node.notifications
+
+    limit = lamp_node.config.notification_retry_count
+    for attempt in range(1, limit + 5):
+        engine.notify(fault, ticks=100 + attempt, delivered=False)
+
+    assert fault.notification_state is NotificationState.DELIVERY_FAILED
+    # One failure event per attempt, including the ones past the limit.
+    failures = [
+        e for e in lamp_node.events
+        if e.event_type.value == "FAULT_NOTIFICATION_FAILED"
+    ]
+    assert len(failures) == limit + 4, "failure events=%d" % len(failures)
+    # Notification failure never touches the fault lifecycle or the lamp.
+    assert fault.state is FaultState.CONFIRMED
+    assert lamp_node.control.lamp_is_on is True
+
+
+def test_delivery_failure_retry_path_still_returns_to_pending(lamp_node):
+    """A failure inside the retry limit must still schedule a retry."""
+    for index in range(6):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    fault = lamp_node.faults.active_faults[0]
+    engine = lamp_node.notifications
+    assert fault.notification_state is NotificationState.ACK_PENDING
+
+    engine.notify(fault, ticks=2, delivered=False)
+    assert fault.notification_state is NotificationState.PENDING
+
+    engine.notify(fault, ticks=3)
+    assert fault.notification_state is NotificationState.ACK_PENDING
+
+
+def test_notify_from_any_waiting_state_does_not_crash(lamp_node):
+    """notify() must not attempt an illegal transition to SENT."""
+    from sslv1.enums import NotificationState as NS
+
+    for index in range(6):
+        lamp_node.step(
+            healthy_sources(current=0.0, power=0.0, light_level=10.0,
+                            switching_feedback=LampState.ON),
+            ticks=1000 * (index + 1),
+        )
+    for resting in (NS.ACK_PENDING, NS.REMINDER_DUE, NS.ESCALATED,
+                    NS.DELIVERY_FAILED, NS.PENDING, NS.SENT):
+        fault = lamp_node.faults.active_faults[0]
+        fault.notification_state = resting
+        for delivered in (True, False):
+            lamp_node.notifications.notify(fault, ticks=5000, delivered=delivered)
+            lamp_node.notifications.tick(fault, ticks=5000)
+    assert lamp_node.control.lamp_is_on is True

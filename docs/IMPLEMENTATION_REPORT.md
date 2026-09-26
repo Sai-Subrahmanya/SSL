@@ -49,7 +49,9 @@ previous version of this report stated.
   `None` instead of naming an option
 - `src/sslv1/storage.py` - added the optional `on_delete` audit hook
 - `src/sslv1/notification.py` - `tick()` no longer re-enters `REMINDER_DUE`;
-  `SENT` removed from the escalation-eligible tuple
+  `SENT` removed from the escalation-eligible tuple; `delivery_failed()` no
+  longer re-enters `DELIVERY_FAILED` once retries are exhausted; `notify()`
+  sends from `PENDING` only, the sole legal source for `SENT`
 
 **Tests (5 files):**
 
@@ -57,13 +59,15 @@ previous version of this report stated.
 - `tests/test_group_controller.py` - 7 sequence/duplicate/replay tests
 - `tests/test_storage.py` - deletion-audit and retention tests
 - `tests/test_measurement.py` - `effective_mode` semantics tests
-- `tests/test_fault.py` - fault-to-event association tests and 4
-  notification-tick regression tests
+- `tests/test_fault.py` - fault-to-event association tests, 4
+  notification-tick regression tests and 3 notification delivery-failure
+  regression tests
 
 **Documentation (9 files):**
 
 - `README.md`, `docs/00_project_overview.md`,
   `docs/02_product_requirements.md`, `docs/03_data_model.md`,
+  `docs/04_fault_management.md`,
   `docs/05_communication_architecture.md`, `docs/06_storage_and_logging.md`,
   `docs/07_configuration.md`, `docs/12_engineering_decisions.md`,
   `docs/review/README.md`, `docs/requirements_traceability.md`,
@@ -86,6 +90,11 @@ previous version of this report stated.
 | 11 | Phase 7 (event / logging) has **no `PR-*` requirement identifiers of its own**. The event model is implemented and exercised, but the audit-trail requirement `PR-SECURITY-003` is formally verified at Phase 15/16. | Moderate (requirements-baseline gap) |
 | 12 | `NotificationEngine.tick()` raised `IllegalTransitionError` on `REMINDER_DUE -> REMINDER_DUE` whenever a confirmed fault stayed unacknowledged past `ack_reminder_interval_ticks` but before `escalation_timeout_ticks`. `LampNode.step()` calls `tick()` for every active confirmed fault on every cycle, so the node crashed on the **second** cycle after the reminder fired. Reachable, but the 295-test suite passed because no test stepped far enough past the reminder interval without acknowledging or escalating. | **Major** |
 | 13 | `tick()` listed `SENT` in its escalation-eligible state tuple, but the state machine allows only `SENT -> {ACK_PENDING, DELIVERY_FAILED}`. `SENT` is transient inside `notify()` (it moves `SENT -> ACK_PENDING` atomically), so no fault ever *rests* in `SENT`; the entry was therefore unreachable rather than live, but it made the code contradict its own table. | Minor (latent) |
+| 14 | `NotificationEngine.delivery_failed()` unconditionally transitioned the fault to `DELIVERY_FAILED`. Once `notification_retry_count` was exhausted the fault rested there, so the next call attempted `DELIVERY_FAILED -> DELIVERY_FAILED` - illegal - and raised `IllegalTransitionError`. The existing test stopped at exactly `retry_count + 1` calls, one short of the crash. Reachable only through the public `delivery_failed()` / `notify(delivered=False)` API, not through `LampNode.step()`. | **Major** |
+| 15 | `notify()` listed `REMINDER_DUE`, `ESCALATED` and `DELIVERY_FAILED` as sources for `SENT`; the state machine permits none of them (`SENT` is reachable only from `PENDING`). Any caller re-notifying a fault in one of those states crashed. Latent before finding 14, but fixing 14 makes `DELIVERY_FAILED` a reachable resting state, so the two had to be fixed together. | **Major** |
+| 16 | `docs/04` section 8 documented `ACK_PENDING -> ACKNOWLEDGED` and called `ACKNOWLEDGED` "terminal for this fault". `ACKNOWLEDGED` is **not** a notification state - it is a fault lifecycle state. `docs/03` and `docs/02` both list the correct seven states; `docs/04` was the outlier. | Moderate (documentation error) |
+| 17 | `docs/04` section 8 documented `REMINDER_DUE -> (re-send) -> ACK_PENDING` and `+--> acknowledgement -> terminal`. Neither is implementable: `REMINDER_DUE -> SENT` is illegal, and `NotificationEngine.acknowledge()` deliberately leaves `notification_state` unchanged. The reminder-interval row also said "how often an unacknowledged notification is repeated" when exactly one reminder is issued. | Moderate (documentation error) |
+| 18 | `docs/04` had two sections numbered 8.2 ("Flow" and "Configurable parameters"). | Minor |
 
 ## 5. Fixes made
 
@@ -142,6 +151,31 @@ previous version of this report stated.
     `test_notification_tick_is_legal_from_every_resting_state`); the last one
     exercises `tick()` from every resting state. Restoring either defect makes
     the suite fail, which was verified by mutation.
+12. **Delivery-failure re-entry fixed.** `delivery_failed()` now returns
+    without attempting a transition when the fault already rests in
+    `DELIVERY_FAILED` (retries exhausted). The attempt is still counted and
+    reported as a `FAULT_NOTIFICATION_FAILED` event, so the record shows every
+    attempt, but the state is left alone. The normal path is unchanged: emit
+    after the transition, then back to `PENDING` while attempts remain.
+13. **`notify()` narrowed to the legal source.** `SENT` is reachable only from
+    `PENDING`, and `delivery_failed()` routes retries through `PENDING`, so
+    `notify()` now sends from `PENDING` only. Re-notifying from
+    `REMINDER_DUE`, `ESCALATED` or `DELIVERY_FAILED` is a no-op rather than a
+    crash. No new behaviour was invented and no transition was added to the
+    state machine. Three regression tests were added
+    (`test_delivery_failure_beyond_retry_limit_does_not_crash`,
+    `test_delivery_failure_retry_path_still_returns_to_pending`,
+    `test_notify_from_any_waiting_state_does_not_crash`).
+14. **`docs/04` section 8 corrected.** The invented `ACKNOWLEDGED`
+    notification state is gone; the section now states explicitly that
+    `ACKNOWLEDGED` is a *fault lifecycle* state and that acknowledgement
+    leaves `notification_state` unchanged. A full transition table was added
+    and verified programmatically to match
+    `NotificationLifecycle.TRANSITIONS` exactly (14 transitions, no
+    divergence in either direction). The unimplementable re-send arrow was
+    removed and replaced with a statement that one reminder is issued and the
+    notification then rests in `REMINDER_DUE`. The duplicate 8.2 numbering
+    was fixed and the reminder-interval wording corrected.
 
 ## 6. Phase 1-13 audited status
 
@@ -202,7 +236,7 @@ run from the repository root, with `pytest` 9.1.1 and
 
 ## 9. Exact test result
 
-**299 passed, 0 failed, 0 skipped, 0 errors.**
+**302 passed, 0 failed, 0 skipped, 0 errors.**
 
 Test counts by module:
 
@@ -214,7 +248,7 @@ Test counts by module:
 | `test_group_controller.py` | 27 |
 | `test_storage.py` | 23 |
 | `test_diagnostics.py` | 23 |
-| `test_fault.py` | 29 |
+| `test_fault.py` | 32 |
 | `test_measurement.py` | 21 |
 | `test_configuration.py` | 19 |
 | `test_time.py` | 19 |
