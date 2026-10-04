@@ -137,7 +137,7 @@ physical level.
 
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
-| `PR-IDENTITY-001` | Identity hierarchy | Device identity and addressing | src/sslv1/identity.py (DeviceIdentity, Identifier, McuUniqueId) | test_identity.py::test_identity_hierarchy_is_complete | `VERIFIED` |
+| `PR-IDENTITY-001` | Identity hierarchy | Device identity and addressing | src/sslv1/identity.py (DeviceIdentity, Identifier, McuUniqueId), src/sslv1/mcc.py (registry) | test_identity.py::test_identity_hierarchy_is_complete; test_mcc.py::test_lamp_inventory_preserves_the_identity_hierarchy, ::test_identical_lamp_ids_in_different_groups_are_different_lamps | `VERIFIED` |
 | `PR-IDENTITY-002` | Deterministic and persistent identity | Device identity and addressing | src/sslv1/identity.py (Identifier is value-based) | test_identity.py::test_identity_is_deterministic_and_value_based | `VERIFIED` |
 | `PR-IDENTITY-003` | Bus address uniqueness | Device identity and addressing | src/sslv1/identity.py (BusAddress, MIN/MAX), src/sslv1/nodes/group_controller.py (register_node) | test_identity.py::test_bus_address_range_is_enforced, ::test_duplicate_registration_is_rejected | `VERIFIED` |
 | `PR-IDENTITY-004` | Identity query | Device identity and addressing | src/sslv1/nodes/group_controller.py (identify), src/sslv1/nodes/lamp_node.py (identify handler) | test_group_controller.py::test_group_snapshot_reports_communication_state; test_comm.py::test_identify_payload_round_trip | `VERIFIED` |
@@ -157,7 +157,7 @@ physical level.
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
 | `PR-OFFLINE-001` | Local operation without Internet | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (no upstream dependency) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting | `VERIFIED` |
-| `PR-OFFLINE-002` | Local operation without the Master Control Center | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (local control only) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting | `VERIFIED` |
+| `PR-OFFLINE-002` | Local operation without the Master Control Center | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (local control only), src/sslv1/mcc.py (consumer only, not a dependency) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting; test_mcc.py::test_lamps_keep_operating_while_the_mcc_has_never_polled, ::test_local_records_are_kept_while_the_mcc_is_unreachable | `VERIFIED` |
 | `PR-OFFLINE-003` | Local operation without the Group Controller | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (operates with no controller traffic) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting | `VERIFIED` |
 | `PR-OFFLINE-004` | Offline record buffering | Offline operation and buffering | src/sslv1/storage.py (RecordStore buffering), src/sslv1/nodes/group_controller.py (pending queue) | test_group_controller.py::test_records_are_buffered_while_upstream_is_unavailable | `VERIFIED` |
 | `PR-OFFLINE-005` | Post-recovery synchronization without silent loss | Offline operation and buffering | src/sslv1/nodes/group_controller.py (forward_upstream confirmed-only removal, no duplicate upload) | test_group_controller.py::test_buffered_records_are_uploaded_after_recovery, ::test_no_duplicate_upload_of_the_same_record, ::test_communication_recovery_resynchronizes | `PARTIAL` |
@@ -167,7 +167,7 @@ physical level.
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
 | `PR-SCALABILITY-001` | Lamps per group | Group Controller / node management | src/sslv1/nodes/group_controller.py (GroupControllerConfig.max_nodes) | test_scenarios.py::test_scenario_47_group_controller_capacity; test_group_controller.py::test_group_controller_supports_the_initial_group_target | `VERIFIED` |
-| `PR-SCALABILITY-002` | Groups per site | Group Controller / node management | src/sslv1/identity.py (site/group hierarchy), src/sslv1/nodes/group_controller.py | test_group_controller.py::test_group_snapshot_reports_communication_state (group identity carried) | `PARTIAL` |
+| `PR-SCALABILITY-002` | Groups per site | Group Controller / node management | src/sslv1/identity.py (site/group hierarchy), src/sslv1/nodes/group_controller.py, src/sslv1/mcc.py (site aggregation over groups) | test_group_controller.py::test_group_snapshot_reports_communication_state (group identity carried); test_mcc.py::test_two_group_site_aggregates_each_group_and_the_site, ::test_one_group_failure_does_not_hide_the_other_groups_health, ::test_site_fault_count_spans_the_groups_without_mixing_them | `PARTIAL` |
 | `PR-SCALABILITY-003` | Failure containment | Group Controller / node management | src/sslv1/nodes/lamp_node.py (per-node state), src/sslv1/nodes/group_controller.py (per-node registration) | test_group_controller.py::test_one_silent_node_does_not_block_the_others, ::test_one_faulty_node_does_not_degrade_the_group; test_scenarios.py::test_scenario_46_multi_node_isolation | `VERIFIED` |
 | `PR-SCALABILITY-004` | Architectural headroom | Group Controller / node management | src/sslv1/nodes/group_controller.py (max_nodes is configuration, not a fixed 16) | test_group_controller.py::test_group_controller_is_not_limited_to_sixteen | `VERIFIED` |
 | `PR-SCALABILITY-005` | Group Controller local storage abstraction | Group Controller / node management | src/sslv1/nodes/group_controller.py (record buffering into RecordStore), src/sslv1/storage.py | test_group_controller.py::test_group_controller_local_storage_is_abstract | `VERIFIED` |
@@ -176,9 +176,9 @@ physical level.
 
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
-| `PR-SECURITY-001` | Operator authorization for overrides | Authorization and audit | src/sslv1/authorization.py (AuthorizationService.require), src/sslv1/command.py | test_scenarios.py::test_scenario_15_unauthorized_command_is_rejected; test_command.py::test_unauthorized_operator_cannot_force_the_lamp | `VERIFIED` |
+| `PR-SECURITY-001` | Operator authorization for overrides | Authorization and audit | src/sslv1/authorization.py (AuthorizationService.require), src/sslv1/command.py, src/sslv1/mcc.py (routes through the same path) | test_scenarios.py::test_scenario_15_unauthorized_command_is_rejected; test_command.py::test_unauthorized_operator_cannot_force_the_lamp; test_mcc.py::test_unauthorized_command_is_rejected_before_anything_is_transmitted, ::test_engineering_only_action_is_protected_even_through_the_mcc | `VERIFIED` |
 | `PR-SECURITY-002` | Command authentication status | Authorization and audit | src/sslv1/command.py (CommandRecord.authorization_status), src/sslv1/enums.py (AuthorizationStatus) | test_command.py::test_unauthenticated_actor_is_rejected | `VERIFIED` |
-| `PR-SECURITY-003` | Audit trail | Authorization and audit | src/sslv1/event.py (EventLog, Event) | test_scenarios.py::test_scenario_49_important_transitions_generate_events, ::test_scenario_50_rejected_command_is_audited | `VERIFIED` |
+| `PR-SECURITY-003` | Audit trail | Authorization and audit | src/sslv1/event.py (EventLog, Event), src/sslv1/mcc.py (reads the existing log, keeps none) | test_scenarios.py::test_scenario_49_important_transitions_generate_events, ::test_scenario_50_rejected_command_is_audited; test_mcc.py::test_mcc_command_is_traceable_to_actor_command_target_and_outcome, ::test_events_are_aggregated_from_the_existing_group_logs | `VERIFIED` |
 | `PR-SECURITY-004` | Tamper detection | Authorization and audit | src/sslv1/enums.py (EventType.TAMPER_INDICATION, FaultType.TAMPER) - representation only | No test: no tamper source exists in the digital prototype | `PLANNED` |
 | `PR-SECURITY-005` | Security validation boundary | Authorization and audit | Documentation boundary only (no code) | docs/09_digital_prototype_scope.md; src/sslv1/authorization.py docstring | `PLANNED` |
 | `PR-SECURITY-006` | Preliminary operator roles | Authorization and audit | src/sslv1/authorization.py (_ROLE_ACTIONS, actions_for_role), src/sslv1/enums.py (Role, Action) | test_command.py::test_authorization_roles_cover_the_expected_actions | `VERIFIED` |
@@ -234,7 +234,7 @@ support, not production code, and they validate the digital model only.
 | 5. Remote-command faults | `test_remote_force_on_lifecycle_is_ordered_and_evidence_based`, `test_every_remote_subtype_is_verified_from_node_evidence`, `test_lost_ack_times_out_to_failed_and_a_late_ack_cannot_resurrect_it`, `test_unauthorized_remote_command_never_reaches_the_bus` | `PR-CONTROL-001`..`PR-CONTROL-003`, `PR-COMM-007`, `PR-SECURITY-001`..`PR-SECURITY-003` |
 | 6. Fault lifecycle | `test_confirmation_threshold_confirms_once_per_condition`, `test_recurrence_after_closure_creates_a_linked_new_record`, `test_illegal_fault_transitions_do_not_mutate_state`, `test_failed_verification_reactivates_the_fault` | `PR-FAULT-003`..`PR-FAULT-011` |
 | 7. Notification faults | `test_repeated_observations_do_not_reset_notification_timers`, `test_reminder_is_issued_once_and_does_not_spam`, `test_escalation_happens_at_the_configured_deadline_not_before`, `test_delivery_failure_follows_the_configured_retry_path` | `PR-FAULT-007`..`PR-FAULT-009`, `PR-FAULT-013` |
-| 8. Storage faults | `test_corrupt_record_is_never_confirmed_or_uploaded_and_recovery_discards_it`, `test_no_silent_loss_across_a_power_loss_cycle`, `test_unauthorized_deletion_is_rejected_audited_and_deletes_nothing` | `PR-STORAGE-001`..`PR-STORAGE-010` |
+| 8. Storage faults | `test_corrupt_record_is_never_confirmed_or_uploaded_and_recovery_discards_it`, `test_no_silent_loss_across_a_power_loss_cycle`, `test_unauthorized_deletion_is_rejected_audited_and_deletes_nothing` | `PR-STORAGE-001`..`PR-STORAGE-009` |
 | 9. Time faults | `test_offline_node_never_claims_synchronized_time`, `test_delayed_sync_never_moves_time_backwards_or_fakes_sync`, `test_offline_records_keep_their_original_time_validity_after_later_sync` | `PR-TIME-001`..`PR-TIME-004` (`PR-TIME-005` stays `PLANNED`: physical RTC behaviour is not modelled) |
 | 10. Multi-node containment | `test_sixteen_node_group_with_five_independent_failures_contains_them`, `test_scenario_h_sixteen_nodes_multiple_faults_leave_the_rest_running` | `PR-SCALABILITY-001`, `PR-SCALABILITY-002`, `PR-COMM-009` |
 | 11. Store-and-forward | `test_upstream_outage_buffers_without_loss_or_local_impact`, `test_lost_confirmation_during_recovery_never_loses_or_duplicates_history`, `test_event_records_are_forwarded_and_confirmed_without_duplication` | `PR-STORAGE-008`, `PR-STORAGE-009`, `PR-OFFLINE-001`..`PR-OFFLINE-005` |
@@ -254,6 +254,41 @@ fault-injection layer:
 | A live-only measurement reply (`record_sequence == 0`) was buffered again as a historical record, so idle polls duplicated history and the upload | `PR-STORAGE-008` (no duplicate upload of a record) | `tests/test_post_merge.py::test_live_only_measurement_reply_does_not_duplicate_the_historical_record` |
 | The normal "lamp commanded off in bright ambient" observation was confirmed as a managed `ENVIRONMENTAL` fault and notified | `PR-DIAG-002`, `PR-FAULT-001`, `PR-FAULT-005` | `tests/test_fault.py::test_environmental_observation_never_becomes_a_confirmed_fault` |
 
+## 8. Phase 15 Master Control Center data-layer evidence
+
+`src/sslv1/mcc.py` is an in-memory aggregation layer over the existing
+components (D-041). It owns no lamp control, fault lifecycle, event log,
+storage or permission rule; it reads Group Controller registrations,
+measurements, stored records and the existing event log, and routes operator
+commands through the existing authorized command path. `tests/mcc_harness.py`
+provides the deterministic system (sites, groups, 16-lamp nodes, controllers,
+buses, one logical clock, one `AuthorizationService`).
+
+| Area | Representative tests (`tests/test_mcc.py`) | Requirements exercised |
+| --- | --- | --- |
+| 1. Site / group / lamp registries | `test_site_is_created_and_listed`, `test_duplicate_site_is_rejected_and_changes_nothing`, `test_duplicate_group_at_one_site_is_rejected`, `test_same_group_id_at_two_sites_is_not_a_conflict`, `test_inconsistent_lamp_hierarchy_is_rejected` | `PR-IDENTITY-001`, `PR-IDENTITY-002`, `PR-SCALABILITY-002` |
+| 2. Live snapshot | `test_lamp_status_reports_every_field_the_group_reported`, `test_lamp_status_invents_no_measurements_before_anything_is_reported`, `test_freshness_is_unknown_when_no_limit_is_configured` | `PR-MEASURE-001`, `PR-MEASURE-004`, `PR-CONTROL-002` |
+| 3. Aggregation | `test_sixteen_lamp_group_aggregates_independently`, `test_two_group_site_aggregates_each_group_and_the_site`, `test_group_with_no_reported_data_is_unknown_not_healthy` | `PR-SCALABILITY-001`, `PR-SCALABILITY-002`, `PR-SCALABILITY-004` |
+| 4. Degradation and containment | `test_one_unavailable_lamp_is_named_and_the_rest_stay_healthy`, `test_multiple_unavailable_lamps_are_all_listed`, `test_one_group_failure_does_not_hide_the_other_groups_health`, `test_degraded_link_is_reported_as_degraded_not_unavailable`, `test_healthy_group_does_not_conceal_a_faulted_lamp` | `PR-SCALABILITY-003`, `PR-COMM-008`, `PR-DIAG-002` |
+| 5. Staleness | `test_lamp_status_is_stale_after_the_freshness_limit_and_not_healthy`, `test_invalid_freshness_limit_is_rejected` | `PR-TIME-001`, `PR-TIME-004` |
+| 6. Fault visibility | `test_active_fault_visibility_carries_identity_state_and_severity`, `test_repeated_fault_polls_add_records_but_not_fault_identities`, `test_cleared_fault_disappears_from_the_active_view`, `test_fault_visibility_does_not_read_unreported_node_state`, `test_site_fault_count_spans_the_groups_without_mixing_them` | `PR-FAULT-003`, `PR-FAULT-007`, `PR-FAULT-012` |
+| 7. Event and audit visibility | `test_events_are_aggregated_from_the_existing_group_logs`, `test_node_events_reach_the_mcc_only_through_the_group_records` | `PR-SECURITY-003`, `PR-STORAGE-008` |
+| 8. Operator commands | `test_authorized_force_on_is_verified_from_a_fresh_observation`, `test_authorized_force_off_and_return_to_auto`, `test_every_supported_subtype_can_be_requested_through_the_mcc`, `test_duplicate_command_id_is_idempotent_through_the_mcc` | `PR-CONTROL-001`..`PR-CONTROL-003`, `PR-COMM-007` |
+| 9. Authorization | `test_unauthorized_command_is_rejected_before_anything_is_transmitted`, `test_engineering_only_action_is_protected_even_through_the_mcc`, `test_admin_time_distribution_is_not_reachable_through_the_mcc_data_layer`, `test_mcc_command_is_traceable_to_actor_command_target_and_outcome` | `PR-SECURITY-001`, `PR-SECURITY-002`, `PR-SECURITY-003` |
+| 10. Configuration readback | `test_configuration_readback_is_exposed_and_bounded`, `test_structured_configuration_writing_is_not_exposed_by_the_mcc` | `PR-CONFIG-001`, `PR-CONFIG-002` (limitation evidence only) |
+| 11. Local independence | `test_lamps_keep_operating_while_the_mcc_has_never_polled`, `test_local_records_are_kept_while_the_mcc_is_unreachable` | `PR-OFFLINE-001`, `PR-OFFLINE-002`, `PR-OFFLINE-004` |
+| 12. End-to-end scenarios | `test_scenario_two_group_site_with_an_isolated_failure`, `test_scenario_operator_handles_a_faulted_lamp_from_the_mcc`, `test_scenario_command_to_a_node_that_cannot_execute_it`, `test_scenario_second_site_stays_isolated_from_the_first` | Cross-cutting |
+
+This phase changes **no requirement status**: the seven PARTIAL rows
+(`PR-CONFIG-001`, `PR-CONFIG-002`, `PR-FAULT-011`, `PR-COMM-008`,
+`PR-SCALABILITY-002`, `PR-STORAGE-007`, `PR-OFFLINE-005`) and the three PLANNED
+rows (`PR-TIME-005`, `PR-SECURITY-004`, `PR-SECURITY-005`) are unchanged. The
+data layer proves deterministic aggregation over the digital model only: it is
+not a GUI, application, cloud service, database-backed backend or physical
+deployment, and none of those are claimed.
+
+---
+
 ## Corrective evidence and scoped limitations
 
 The complete corrective regression suite is `tests/test_post_merge.py`; the
@@ -264,13 +299,13 @@ or retention integration.
 
 | Requirement | Remaining scope / reason for PARTIAL |
 | --- | --- |
-| `PR-CONFIG-001` | Structured clear policies and group-scope mappings remain deferred; see configuration field audit. |
-| `PR-CONFIG-002` | The supported remote integer-scalar subset is tested; structured schedules and remaining fields are not on the bus. |
+| `PR-CONFIG-001` | Structured clear policies and group-scope mappings remain deferred; see configuration field audit. The Phase 15 MCC exposes configuration readback only and adds no configuration writer (`test_mcc.py::test_structured_configuration_writing_is_not_exposed_by_the_mcc`). |
+| `PR-CONFIG-002` | The supported remote integer-scalar subset is tested; structured schedules and remaining fields are not on the bus. The MCC reads back what the group stored (`test_mcc.py::test_configuration_readback_is_exposed_and_bounded`) and offers no structured write path. |
 | `PR-FAULT-011` | Authorized externally supplied verification outcome; no automatic repair-evidence comparator or physical repair proof. |
 | `PR-COMM-008` | Communication FSM/deadlines/events tested; automatic GC link-fault adaptation into per-lamp managed fault workflow is not implemented. |
-| `PR-SCALABILITY-002` | Multiple group identities/controllers can be constructed, but a full multi-group MCC aggregation layer is not implemented. |
+| `PR-SCALABILITY-002` | Multiple group identities/controllers can be constructed and the Phase 15 data layer aggregates 16-lamp groups per site in memory (`test_mcc.py::test_two_group_site_aggregates_each_group_and_the_site`). A production multi-group/multi-site deployment with persistence, resource bounds and scale validation is not implemented, so the requirement stays PARTIAL. |
 | `PR-STORAGE-007` | Configuration is separate from record objects; calibration storage and physical flash separation are not implemented. |
-| `PR-OFFLINE-005` | Measurement/event replay and confirmation are tested; complete automatic recovery/synchronization orchestration remains caller-driven. |
+| `PR-OFFLINE-005` | Measurement/event replay and confirmation are tested; complete automatic recovery/synchronization orchestration remains caller-driven. The Phase 15 MCC reads buffered/pending upload state from the group controller but does not orchestrate recovery, upload or confirmation. |
 
 The local persistence and RTC-backed requirement rows verify **in-memory
 restart/logical-time semantics only**, not disk/flash persistence or physical

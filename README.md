@@ -179,7 +179,7 @@ its requirements, architecture and design are documented.
 | Phase 12 | Configuration | Implemented (bounded digital model) |
 | Phase 13 | Multi-node simulation | Implemented (bounded digital model) |
 | Phase 14 | Fault injection | Implemented (deterministic digital model) |
-| Phase 15 | Master Control Center data layer | Not started |
+| Phase 15 | Master Control Center data layer | Implemented (deterministic digital data layer) |
 | Phase 16 | Full integration | Not started |
 | Phase 17 | System validation | Not started |
 | Phase 18 | Engineering audit | Not started |
@@ -351,10 +351,10 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Requirements baseline | Drafted for review (88 requirements) |
 | Architecture baseline | Drafted for review |
 | Assumptions register | Drafted for review (29 assumptions, 18 open) |
-| Engineering decision log | 40 decisions recorded |
+| Engineering decision log | 41 decisions recorded |
 | Requirements traceability | Regenerated: See reconciled VERIFIED / PARTIAL / PLANNED counts in docs/requirements_traceability.md |
 | Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (546 tests, all passing), including the Phase 14 fault-injection scenarios |
+| Deterministic test suite | Implemented in `tests/` (601 tests, all passing), including the Phase 14 fault-injection scenarios and the Phase 15 MCC data-layer scenarios |
 | Physical validation | **Not started** - requires hardware |
 
 "Digital prototype" status means deterministic software behaviour has been
@@ -387,8 +387,11 @@ The complete corrective findings, test inventory, Phase 14 fault-injection
 results and remaining limitations are in
 [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md). Requirement
 status is no longer inferred merely from an existing module and passing test.
-Structured remote configuration, automated repair-evidence comparison, complete
-multi-group MCC behavior, calibration storage and automatic GC-link fault
-workflow integration remain explicitly PARTIAL. This is a digital engineering
+The Phase 15 Master Control Center is an in-memory data/orchestration layer over
+the existing controllers (no GUI, no persistence, no production backend); it
+does not close the PARTIAL rows. Structured remote configuration, automated
+repair-evidence comparison, production multi-group deployment, calibration
+storage and automatic GC-link fault workflow integration remain explicitly
+PARTIAL. This is a digital engineering
 prototype, not production firmware or physical validation. No open retention,
 storage-full, switching-feedback, RTC or security-policy decision is closed.

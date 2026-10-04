@@ -1,6 +1,6 @@
 # Smart Street Light V1 — Corrective Implementation and Audit Report
 
-Date: 2026-09-26. Scope: **digital engineering prototype only**.
+Date: 2026-09-26 (Phase 15 addition: 2026-10-04, section 11). Scope: **digital engineering prototype only**.
 
 ## 1. Provenance and assessment
 
@@ -401,3 +401,120 @@ Private helper replaced: `_status_frame`.
 - `test_fractional_local_mode_is_rejected_without_mutation`
 - `test_invalid_light_value_does_not_drive_automatic_control`
 - `test_group_configuration_rejects_invalid_numeric_types`
+
+### Added: tests/mcc_harness.py
+
+- Phase 15 deterministic MCC system harness (`MccSim`, identifier helpers,
+  `advance`/`step`/`step_group`/`pump`/`round`/`rounds`, condition injection);
+  test support only, not production code.
+
+### Added: tests/test_mcc.py
+
+- `test_site_is_created_and_listed`, `test_duplicate_site_is_rejected_and_changes_nothing`, `test_unknown_site_is_reported_not_invented`, `test_multiple_sites_are_distinct`
+- `test_group_is_registered_and_listed_per_site`, `test_duplicate_group_at_one_site_is_rejected`, `test_same_group_id_at_two_sites_is_not_a_conflict`, `test_group_identity_mismatch_is_rejected`, `test_group_controller_with_a_foreign_clock_is_rejected`
+- `test_lamp_inventory_preserves_the_identity_hierarchy`, `test_lamp_listing_is_scoped_by_group_and_site`, `test_duplicate_lamp_registration_is_rejected`, `test_identical_lamp_ids_in_different_groups_are_different_lamps`, `test_inconsistent_lamp_hierarchy_is_rejected`, `test_lamp_that_belongs_to_another_site_is_rejected`, `test_unknown_lamp_lookup_is_rejected`
+- `test_lamp_status_reports_every_field_the_group_reported`, `test_lamp_status_invents_no_measurements_before_anything_is_reported`, `test_lamp_status_is_stale_after_the_freshness_limit_and_not_healthy`, `test_freshness_is_unknown_when_no_limit_is_configured`, `test_invalid_freshness_limit_is_rejected`, `test_group_must_be_selected_with_its_site`
+- `test_sixteen_lamp_group_aggregates_independently`, `test_two_group_site_aggregates_each_group_and_the_site`, `test_group_with_no_reported_data_is_unknown_not_healthy`
+- `test_one_unavailable_lamp_is_named_and_the_rest_stay_healthy`, `test_multiple_unavailable_lamps_are_all_listed`, `test_one_group_failure_does_not_hide_the_other_groups_health`, `test_group_and_site_health_are_unavailable_when_all_groups_are_unreachable`, `test_degraded_link_is_reported_as_degraded_not_unavailable`, `test_healthy_group_does_not_conceal_a_faulted_lamp`
+- `test_active_fault_visibility_carries_identity_state_and_severity`, `test_repeated_fault_polls_add_records_but_not_fault_identities`, `test_cleared_fault_disappears_from_the_active_view`, `test_fault_visibility_does_not_read_unreported_node_state`, `test_site_fault_count_spans_the_groups_without_mixing_them`, `test_identical_group_ids_at_two_sites_never_mix_their_faults`
+- `test_events_are_aggregated_from_the_existing_group_logs`, `test_node_events_reach_the_mcc_only_through_the_group_records`
+- `test_authorized_force_on_is_verified_from_a_fresh_observation`, `test_authorized_force_off_and_return_to_auto`, `test_every_supported_subtype_can_be_requested_through_the_mcc`, `test_unauthorized_command_is_rejected_before_anything_is_transmitted`, `test_engineering_only_action_is_protected_even_through_the_mcc`, `test_admin_time_distribution_is_not_reachable_through_the_mcc_data_layer`
+- `test_mcc_command_is_traceable_to_actor_command_target_and_outcome`, `test_duplicate_command_id_is_idempotent_through_the_mcc`
+- `test_configuration_readback_is_exposed_and_bounded`, `test_structured_configuration_writing_is_not_exposed_by_the_mcc`
+- `test_lamps_keep_operating_while_the_mcc_has_never_polled`, `test_local_records_are_kept_while_the_mcc_is_unreachable`
+- `test_scenario_two_group_site_with_an_isolated_failure`, `test_scenario_operator_handles_a_faulted_lamp_from_the_mcc`, `test_scenario_command_to_a_node_that_cannot_execute_it`, `test_scenario_second_site_stays_isolated_from_the_first`
+
+---
+
+## 11. Phase 15 - Master Control Center data layer (2026-10-04)
+
+Phase 15 adds the logical operator/data layer defined in `docs/01` section 6 and
+D-030/D-041. It adds no product requirements and no new control, diagnosis,
+notification, storage or authorization mechanism: it **reads** what the existing
+Lamp Nodes and Group Controllers already report and routes operator commands
+through the existing authorized command path.
+
+| Item | Value |
+| --- | --- |
+| Production module | `src/sslv1/mcc.py` - `MasterControlCenter`, `MasterControlCenterConfig`, registry and read-model dataclasses |
+| Enum additions | `Freshness`, `LampAvailability`, `AggregateHealth` in `src/sslv1/enums.py` |
+| Harness | `tests/mcc_harness.py` - `MccSim` (sites, groups, 16-lamp nodes, controllers, in-memory buses, one logical clock, one `AuthorizationService`) |
+| Scenarios | `tests/test_mcc.py` - 55 tests in 13 sections plus 4 end-to-end scenarios |
+| Full suite | 601 passed, 0 failed (546 before Phase 15) |
+| Determinism | logical clock only; no wall clock, randomness, network or hardware access |
+
+### 11.1 Architecture delivered
+
+- **Registries:** sites, groups (unique within a site; the same group id at two
+  sites is not a conflict) and lamps (unique within a group; identical lamp
+  indexes in different groups are different lamps). Inconsistent hierarchy
+  (site/group/lamp mismatch, foreign controller or clock, duplicates) is
+  rejected before it changes the registry.
+- **Live view:** per-lamp commanded/actual state, effective/configured mode,
+  active override, sensor/controller/communication status, voltage, current,
+  power, energy and light level - all read from the Group Controller's stored
+  measurement and the node's status answer; missing data stays missing.
+- **Aggregation:** group and site totals, reachable/unreachable/unknown
+  members, active-fault count and highest severity, aggregate power/energy
+  where the existing model provides them, latest observation time and the
+  group's pending-upload/storage figures. Healthy members never conceal an
+  unhealthy one, and one group's failure never changes another group's verdict.
+- **Freshness:** observation time, age and time-sync state come from the
+  existing logical time model; an observation older than
+  `status_max_age_ticks` (or with no configured limit and no observation) is
+  reported `STALE`/`UNKNOWN`, never as current or healthy.
+- **Faults and history:** fault summaries are built from the `FAULT` records the
+  group actually received (one summary per fault identity, no MCC lifecycle),
+  and events are read from the existing `EventLog` of each controller. No
+  second event log, no second fault lifecycle and no MCC-side storage exist.
+- **Commands:** FORCE_ON/FORCE_OFF/RETURN_TO_AUTO (and the supported
+  `CONTROL_COMMAND` subtypes where the architecture already allows them) are
+  submitted to the Group Controller's existing command path, so authorization,
+  idempotent ids, the CREATED -> RECEIVED -> EXECUTED -> ACKNOWLEDGED ->
+  ACTUAL_STATE_VERIFIED sequence and the original actor identity are unchanged.
+  Denied actions are rejected before any frame is transmitted.
+- **Configuration:** readback of what the controller stored; no writer, no
+  structured remote configuration and no privileged administration action is
+  exposed by the data layer.
+
+### 11.2 Defects found and fixed
+
+| # | Defect | Effect | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| 1 | A fault the node stopped reporting (closed/cleared) was never recorded as cleared, because the "no active fault" answer to a validated pull was discarded as an empty answer | Every upstream layer would keep presenting the old fault as active forever, contradicting "missing information is not current truth" | The Group Controller records the clearing exchange once per clearing (linked to the fault identity it clears) and the MCC excludes cleared faults from the active view while keeping the record readable | `tests/test_mcc.py::test_cleared_fault_disappears_from_the_active_view` |
+| 2 | A lamp with an active fault was still counted as a healthy lamp in its group | A group could report `HEALTHY` totals while one of its lamps carried a confirmed fault | Availability is degraded by an active fault (after communication/freshness verdicts, so stale fault data never looks current) | `tests/test_mcc.py::test_healthy_group_does_not_conceal_a_faulted_lamp` |
+| 3 | A fault summary re-derived its site from the group id alone, so a fault in `SITE-B/GRP-01` was reported as belonging to `SITE-A/GRP-01` | Identical group ids at two sites were mixed at the aggregation layer, misattributing fault identity and history | The site from the queried registration is part of the fault identity key (site, group, lamp, fault id), and the redundant lookup helper was removed | `tests/test_mcc.py::test_identical_group_ids_at_two_sites_never_mix_their_faults` |
+
+All three fixes were mutation-checked: reverting any production change makes its
+regression test fail (or, for defect 3, its specific assertion fail), and no
+other test changes state.
+
+### 11.3 Bounded behaviour and boundaries
+
+- The existing fault-report transport carries the one fault a node reports
+  first, so a lamp with several concurrent faults is visible one fault at a
+  time; a fault is only shown as cleared when the node reports no active fault
+  (the pre-existing "active snapshot" property recorded in section 7).
+- The seven PARTIAL requirements and the three PLANNED requirements are
+  unchanged. `PR-SCALABILITY-002` stays PARTIAL: the data layer aggregates two
+  16-lamp groups per site deterministically, but production multi-group/multi-site
+  deployment, persistence, resource bounds and scale validation remain out of
+  scope. `PR-CONFIG-001/002` stay PARTIAL (readback only, no structured write
+  path) and `PR-OFFLINE-005` stays PARTIAL (the MCC does not orchestrate
+  recovery, upload or confirmation).
+- No GUI, cloud service, database, web framework, REST/web/auth server, mobile
+  application or paid service was added, and no physical networking, hardware,
+  telemetry or firmware dependency exists.
+- **No physical validation was performed.** The Phase 15 evidence is
+  deterministic execution of the digital model only; it says nothing about
+  electrical safety, EMC/RF, relay/surge behaviour, mains or IP rating,
+  physical RTC retention/accuracy, certification or production readiness.
+- Documentation updated: `README.md`, `docs/00`, `docs/01` (section 6),
+  `docs/03` (MCC persistence), `docs/08` (section 7.2, inventory),
+  `docs/09` (remaining boundaries), `docs/12` (D-030 consequence, new D-041 and
+  reconciled decision count), `docs/requirements_traceability.md` (section 8 and
+  scoped-limitation notes) and this report.
+- Pre-existing documentation defects found while reconciling: the traceability
+  document cited a non-existent `PR-STORAGE-010` and `docs/11` cited it as a
+  related requirement of A-29; both now reference the existing
+  `PR-STORAGE-009` (record lifecycle and retention policy).

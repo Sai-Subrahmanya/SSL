@@ -213,8 +213,11 @@ Authentication remains an asserted Actor flag/role on a trusted in-memory bus,
 not peer authentication or cryptographic replay protection. Record/identity/
 configuration persistence is simulated object retention across restart, not
 process or hardware persistence. Repair verification is an authorized external
-outcome, not proof of physical repair. Structured remote configuration, a full
-Master Control Center multi-group application, physical calibration storage,
-and automatic GC-link-to-managed-fault adaptation are not completed features.
+outcome, not proof of physical repair. Structured remote configuration,
+physical calibration storage and automatic GC-link-to-managed-fault adaptation
+are not completed features. The Phase 15 Master Control Center is an in-memory
+data/orchestration layer over the existing controllers: it has no GUI, no
+persistence, no production backend and no validated production multi-site
+deployment.
 See PARTIAL/PLANNED rows in requirements_traceability.md; no blanket completion
 claim supersedes those limitations.

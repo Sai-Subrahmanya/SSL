@@ -362,7 +362,7 @@ requirements when they are resolved.
 | Reason | Selecting a memory device now would prematurely constrain the hardware architecture phase. |
 | Status | `Accepted` |
 | Effect if changed | Storage capacity and buffering limits would need to be dimensioned; the abstract interface is unaffected. |
-| Related requirements | `PR-SCALABILITY-005`, `PR-STORAGE-010` |
+| Related requirements | `PR-SCALABILITY-005`, `PR-STORAGE-009` |
 
 ---
 

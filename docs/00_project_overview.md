@@ -18,7 +18,7 @@ not itself introduce numbered requirements. Numbered requirements live in
 | --- | --- |
 | Project name | Smart Street Light V1 (SSL V1) |
 | Repository | `Sai-Subrahmanya/SSL` |
-| Current stage | Phases 1-14 complete as a deterministic digital prototype; Phase 15 onward not started |
+| Current stage | Phases 1-15 complete as a deterministic digital prototype; Phase 16 onward not started |
 | Repository classification | Early engineering / digital prototype development |
 | Production status | Not production firmware |
 
@@ -328,13 +328,16 @@ Details in [04_fault_management.md](04_fault_management.md).
 | Phase 12 | Configuration | Configuration model, distribution, validation, auditability. | Implemented (bounded digital model) |
 | Phase 13 | Multi-node simulation | Multiple lamp nodes, group behaviour, scalability. | Implemented (bounded digital model) |
 | Phase 14 | Fault injection | Deterministic fault injection and recovery behaviour (digital model only). | Implemented (deterministic digital model) |
-| Phase 15 | Master Control Center data layer | Sites, groups, lamps, aggregation, history, no GUI in early phases. | Not started |
+| Phase 15 | Master Control Center data layer | Sites, groups, lamps, aggregation, history, no GUI in early phases. | Implemented (deterministic digital data layer) |
 | Phase 16 | Full integration | End-to-end integration of all layers. | Not started |
 | Phase 17 | System validation | Validation against requirements, test evidence, traceability closure. | Not started |
 | Phase 18 | Engineering audit | Independent audit, engineering package preparation for partner review. | Not started |
 
 Later phases are not implemented in advance. Each phase begins only after its
-requirements are documented and reviewed.
+requirements are documented and reviewed. Phase 15 delivered the logical
+Master Control Center data layer (`src/sslv1/mcc.py`) as an in-memory consumer
+of the existing controllers, per D-030 and D-041: no GUI, no persistence and no
+production backend exist.
 
 Model availability is not a claim of full product completion. Seven requirements
 are PARTIAL and three remain PLANNED in the reconciled traceability matrix.

@@ -228,10 +228,23 @@ early phases.
 - overrides,
 - audit history.
 
-### 6.3 Explicit non-goal for the current phase
+### 6.3 Phase 15 data layer (implemented)
+
+`src/sslv1/mcc.py` implements the logical data layer as an in-memory
+Site -> Group -> Lamp registry that **aggregates** what the existing Group
+Controllers and Lamp Nodes already report: per-lamp status and freshness, group
+and site aggregation, active-fault visibility, the existing event/record history,
+configuration readback and operator commands routed through the existing
+authorized command path. It duplicates no lamp control, diagnostic, fault,
+notification, storage or authorization logic, keeps no event log of its own and
+holds no persistence (see D-041 and `03_data_model.md`).
+
+### 6.4 Explicit non-goal for the current phase
 
 No graphical UI is built in this phase. The Master Control Center is defined
-here as a logical layer and data model only.
+here as a logical layer and data model only. No cloud service, database, web
+framework, REST/web/auth server or production backend exists; the data layer is
+a deterministic digital model.
 
 ---
 
@@ -339,7 +352,7 @@ claims:
 
 | Architecture element | Related requirements |
 | --- | --- |
-| Master Control Center | `PR-SCALABILITY-002`, `PR-OFFLINE-002`, `PR-FAULT-007`, `PR-SECURITY-003` |
+| Master Control Center (Phase 15 data layer: `src/sslv1/mcc.py`) | `PR-SCALABILITY-002`, `PR-OFFLINE-002`, `PR-FAULT-007`, `PR-SECURITY-003` |
 | Group Controller | `PR-COMM-001`, `PR-COMM-002`, `PR-COMM-007`, `PR-SCALABILITY-001`, `PR-SCALABILITY-003`, `PR-OFFLINE-003`, `PR-TIME-003` |
 | RS-485 link | `PR-COMM-003`, `PR-COMM-004`, `PR-COMM-005`, `PR-COMM-006`, `PR-COMM-008`, `PR-COMM-009` |
 | Lamp Node control | `PR-LIGHT-001`..`PR-LIGHT-005`, `PR-CONTROL-001`..`PR-CONTROL-006` |

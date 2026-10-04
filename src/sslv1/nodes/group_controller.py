@@ -137,6 +137,7 @@ class NodeRegistration:
     last_poll_success: bool = False
     confirmed_event_id: int = 0
     received_event_ids: set = field(default_factory=set)
+    last_reported_fault_id: Optional[str] = None
     confirmed_record_sequence: int = 0
     received_record_sequences: set = field(default_factory=set)
 
@@ -552,9 +553,33 @@ class GroupController:
         self, registration: NodeRegistration, fields: Dict[str, object]
     ) -> None:
         if not fields.get("fault_id"):
-            # "No active fault" answer to a validated pull: a healthy exchange,
-            # not something to buffer as a fault record.
+            # "No active fault" answer to a validated pull. On its own it
+            # buffers nothing (an idle node must not grow the store), but when
+            # a fault was previously reported for this lamp the clearing is new
+            # information: without it every upstream layer would keep presenting
+            # the old fault as active forever. The record carries the state the
+            # *node* reported (no active fault) linked to the fault identity it
+            # clears, and it is written once per clearing, not once per pull.
+            previous = registration.last_reported_fault_id
+            if previous is None:
+                return
+            registration.last_reported_fault_id = None
+            self._buffer_record(
+                RecordType.FAULT,
+                {
+                    "lamp_id": str(registration.lamp_id),
+                    "fault_id": previous,
+                    "fault_type": str(fields.get("fault_type")),
+                    "diagnostic_classification": str(fields.get("diagnostic_classification")),
+                    "fault_state": str(fields.get("fault_state")),
+                    "notification_state": str(fields.get("notification_state")),
+                    "severity": str(fields.get("severity")),
+                    "confirmation_count": fields.get("confirmation_count"),
+                    "cleared": True,
+                },
+            )
             return
+        registration.last_reported_fault_id = str(fields.get("fault_id"))
         self._buffer_record(
             RecordType.FAULT,
             {

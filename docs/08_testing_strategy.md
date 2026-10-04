@@ -137,6 +137,23 @@ unaffected components stayed unaffected. Faults are injected through the
 documented hooks (readings, bus silence/corruption, storage hooks, time model);
 the harness does not bypass the domain layer.
 
+## 7.2 Phase 15 Master Control Center evidence
+
+Phase 15 is implemented as a deterministic in-memory aggregation layer over the
+existing components, not as an application or a second implementation:
+
+| Item | Value |
+| --- | --- |
+| Harness | `tests/mcc_harness.py` (`MccSim`: sites, groups, 16-lamp nodes, group controllers, in-memory buses, one shared logical clock and one `AuthorizationService`) |
+| Scenarios | `tests/test_mcc.py` (13 sections: registries, live snapshot, aggregation, degradation and failure containment, fault visibility, event/audit visibility, commands, authorization, configuration readback, local independence, end-to-end scenarios) |
+| Evidence basis | Only Group Controller registrations, node measurements, stored records and the existing event log are read; every command goes through the existing authorization and command path |
+| Determinism | Logical clock only; no wall-clock time, randomness, network or hardware access |
+| Scope claim | Validates modelled aggregation behaviour only; no GUI, cloud, database, production backend or physical validation is claimed |
+
+Each test asserts the state before and after the action; degradation tests verify
+that healthy members do not hide unhealthy ones and that one group's failure
+does not change another group's reported state.
+
 ---
 
 ## 8. Evidence requirements
@@ -150,7 +167,7 @@ Each phase shall produce:
 | Deviation record | Any requirement not met, with reason and disposition. |
 | Review note | Reviewer comments, recorded under `docs/review/`. |
 
-### 8.1 Evidence produced for Phases 1-14
+### 8.1 Evidence produced for Phases 1-15
 
 The deterministic suite now lives in [`tests/`](../tests/) and is run with
 `python3 -m pytest` from the repository root. It uses only Python 3.9+ and
@@ -173,6 +190,8 @@ pytest.
 | `tests/test_post_merge.py` | Corrective regression suite (authorization, fresh verification, deadlines, corruption, retention) and the Phase 14 defect regressions. |
 | `tests/fault_injection.py` | Phase 14 deterministic fault-injection harness (`GroupSim`, injected readings, link/storage/time hooks); test support, not production code. |
 | `tests/test_fault_injection.py` | Phase 14 injected-fault scenarios: 12 fault categories and the A-J end-to-end scenarios. |
+| `tests/mcc_harness.py` | Phase 15 Master Control Center simulation harness (`MccSim`); test support, not production code. |
+| `tests/test_mcc.py` | Phase 15 MCC data-layer scenarios: registries, aggregation, degradation, fault/event visibility, commands, authorization, config readback, local independence and end-to-end scenarios. |
 
 Every `VERIFIED` entry in
 [requirements_traceability.md](requirements_traceability.md) names the module
@@ -246,7 +265,7 @@ logic only**. This is stated explicitly in the traceability record.
 | Test strategy defined | Yes |
 | Fault injection matrix defined | Yes |
 | Test identifiers / tooling | pytest; deterministic logical clock, no wall clock or randomness |
-| Tests implemented | Yes - `tests/` covers Phases 1-14; see section 8.1 |
+| Tests implemented | Yes - `tests/` covers Phases 1-15; see section 8.1 |
 
 ---
 

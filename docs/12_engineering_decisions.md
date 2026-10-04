@@ -456,7 +456,7 @@ Each decision contains:
 | Decision | The Master Control Center is defined as a logical operator/control and data layer. No graphical user interface is built in the early phases. |
 | Reason | Interface work would precede validated behaviour. |
 | Alternatives | Building an operator dashboard first. |
-| Consequences | The Master Control Center data layer is deferred to Phase 15. |
+| Consequences | The Master Control Center data layer is deferred to Phase 15. Phase 15 implemented it as an in-memory logical model (`src/sslv1/mcc.py`) without a GUI. |
 | Status | `Established` |
 
 ---
@@ -603,28 +603,33 @@ Each decision contains:
 
 ---
 
+### D-041 - Master Control Center is a consumer of existing components
+
+| Field | Value |
+| --- | --- |
+| Decision ID | D-041 |
+| Date | 2026-10-04 |
+| Decision | The Phase 15 Master Control Center is an in-memory aggregation and orchestration layer over the existing LampNode, GroupController, AuthorizationService, CommandService and record store. It holds no lamp control, fault lifecycle, event log, storage or permission rules of its own; it reads the existing state and routes operator commands through the existing authorized command path with the original actor identity. |
+| Reason | A second implementation would create two sources of truth for status, faults, audits and authorization, which contradicts D-030 (logical layer) and the single-lifecycle requirements. |
+| Alternatives | Giving the MCC its own control model, fault engine, event log and permission table. |
+| Consequences | Status, faults, events and commands are only ever read from or written to the existing components; aggregation is deterministic and derived. The MCC keeps no persistence (see 03_data_model.md) and no GUI (D-030). Production multi-group deployment, persistence and scale validation remain outside the digital prototype. |
+| Status | `Established` |
+
+---
+
 ## 5. Summary
 
 | Metric | Value |
 | --- | --- |
-| Total decisions recorded | 40 |
-| `Established` | 40 |
+| Total decisions recorded | 41 |
+| `Established` | 41 |
 | `Proposed` | 0 |
 | `Superseded` | 0 |
 
 No decisions beyond those established in the project direction have been
 invented in this log. Decisions D-031 to D-039 were introduced by review
-finding REVIEW-000 and are recorded in the review record.
-
-| Metric | Value |
-| --- | --- |
-| Total decisions recorded | 30 |
-| `Established` | 30 |
-| `Proposed` | 0 |
-| `Superseded` | 0 |
-
-No decisions beyond those established in the project direction have been
-invented in this log.
+finding REVIEW-000 and are recorded in the review record; D-040 and D-041 were
+added by the Phase 14 and Phase 15 implementations respectively.
 
 ---
 

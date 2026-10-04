@@ -423,7 +423,7 @@ The detailed permission matrix is a later security/design task.
 | Serialization / wire format | Defined for the digital prototype (see `src/sslv1/comm/`) |
 | Physical storage layout | **Not defined** - hardware architecture phase |
 | Physical storage layout | **Not defined** - Phase 8 |
-| Master Control Center persistence | **Not defined** - Phase 15 |
+| Master Control Center persistence | **None** - the Phase 15 layer keeps no store of its own; it reads the existing node/group records (`src/sslv1/mcc.py`) |
 
 ---
 

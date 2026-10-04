@@ -402,6 +402,52 @@ class EventType(StrEnum):
     FAULT_REPAIR_REPORTED = "FAULT_REPAIR_REPORTED"
 
 
+# --------------------------------------------------------------------------
+# Master Control Center read model (Phase 15)
+# --------------------------------------------------------------------------
+# These values describe how current the Master Control Center's *view* of the
+# system is. They are read-model vocabulary owned by the MCC data layer, not
+# domain states of a lamp, group or fault: no lamp or Group Controller ever
+# stores them.
+class Freshness(StrEnum):
+    """How current one observed value is relative to the MCC freshness limit.
+
+    ``UNKNOWN`` is the honest answer both when nothing has been observed and
+    when no freshness limit is configured. An unknown age is never presented
+    as current truth.
+    """
+
+    FRESH = "FRESH"
+    STALE = "STALE"
+    UNKNOWN = "UNKNOWN"
+
+
+class LampAvailability(StrEnum):
+    """The MCC's view of whether a lamp can currently be relied upon.
+
+    ``HEALTHY``     - communication healthy and the observation is fresh.
+    ``RECOVERING``  - communication is re-established but not yet confirmed.
+    ``DEGRADED``    - communication retrying or degraded.
+    ``UNAVAILABLE`` - communication fault, or the group cannot be reached.
+    ``UNKNOWN``     - never observed, or the last observation is stale.
+    """
+
+    HEALTHY = "HEALTHY"
+    RECOVERING = "RECOVERING"
+    DEGRADED = "DEGRADED"
+    UNAVAILABLE = "UNAVAILABLE"
+    UNKNOWN = "UNKNOWN"
+
+
+class AggregateHealth(StrEnum):
+    """The MCC's view of a group or of a site as a whole."""
+
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    UNAVAILABLE = "UNAVAILABLE"
+    UNKNOWN = "UNKNOWN"
+
+
 class EventSeverity(StrEnum):
     DEBUG = "DEBUG"
     INFO = "INFO"
