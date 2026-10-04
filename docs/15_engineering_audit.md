@@ -20,10 +20,14 @@ whose parent is `cf4a8db8c0cc609328502ad12aaa7304550efd36` (Phase 16).
 
 ## 3. Final SHA
 
-The commit that contains this report, created by this audit on
-`arena/01a0dcf6-ssl`. Its exact value is recorded in the follow-up
-record-keeping commit and in the audit's final response, because a commit
-cannot contain its own hash.
+The audit commit that introduced this report is
+`8383c47e63b6ecb94f1cb528ccdb4dcaeacfc1f1` ("Phase 18: final engineering
+audit"), whose parent is `2a76b8d58935c4c30c3162e9ac6fc4011c68fa92` (Phase 17).
+The branch HEAD at delivery is the record-keeping commit that follows it on
+`arena/01a0dcf6-ssl` (it only completes this section, because a commit cannot
+contain its own hash); the exact HEAD value, remote-verified, is reported in
+the audit's final response. Starting SHA, audit commit and branch HEAD are
+therefore all stated explicitly rather than left to inference.
 
 ## 4. Repository and branch verification
 
