@@ -188,7 +188,7 @@ against prior counts or commit messages. External engineering review remains.
 
 ## 7. Remaining model scope and decisions
 
-Seven requirements are explicitly PARTIAL, not waived:
+Seven requirements were explicitly PARTIAL, not waived (Phase 16 later added `PR-FAULT-007`; see section 12.3):
 
 - PR-CONFIG-001/002: the full remotely distributable structured schema and scope
   assignment are not implemented; the exact supported scalar subset is listed.
@@ -274,8 +274,9 @@ makes the corresponding regression test fail.
 ### 9.3 Traceability
 
 Every Phase 14 area maps to existing requirements in
-`docs/requirements_traceability.md` section 7. No requirement status changed:
-the matrix remains 78 `VERIFIED`, 7 `PARTIAL`, 3 `PLANNED`.
+`docs/requirements_traceability.md` section 7. No requirement status changed in
+Phase 14. (Phase 16 later re-based the matrix to 77 `VERIFIED`, 8 `PARTIAL`,
+3 `PLANNED`; see section 12.)
 
 ---
 
@@ -496,7 +497,8 @@ other test changes state.
   time; a fault is only shown as cleared when the node reports no active fault
   (the pre-existing "active snapshot" property recorded in section 7).
 - The seven PARTIAL requirements and the three PLANNED requirements are
-  unchanged. `PR-SCALABILITY-002` stays PARTIAL: the data layer aggregates two
+  unchanged for Phase 15 (Phase 16 later moved `PR-FAULT-007` to PARTIAL; see
+  section 12.3). `PR-SCALABILITY-002` stays PARTIAL: the data layer aggregates two
   16-lamp groups per site deterministically, but production multi-group/multi-site
   deployment, persistence, resource bounds and scale validation remain out of
   scope. `PR-CONFIG-001/002` stay PARTIAL (readback only, no structured write
@@ -518,3 +520,77 @@ other test changes state.
   document cited a non-existent `PR-STORAGE-010` and `docs/11` cited it as a
   related requirement of A-29; both now reference the existing
   `PR-STORAGE-009` (record lifecycle and retention policy).
+
+---
+
+## 12. Phase 16 - full digital integration (2026-10-04)
+
+### 12.1 What was integrated
+
+The existing subsystems were connected into one executable system - Master
+Control Center over Group Controller over Lamp Nodes, with the real command,
+authorization, communication, measurement, fault, notification, storage,
+configuration and time components - and driven end to end. No parallel
+architecture, no second fault engine, no second record store, no second
+authorization path and no new product feature were added.
+
+Production additions (minimal, all in places where the end-to-end flow was
+genuinely incomplete):
+
+| File | Addition |
+| --- | --- |
+| `src/sslv1/mcc.py` | `ReceivedRecord`, `MccUpstreamLink` (the MCC end of the existing abstract upstream link), `receive_upstream` (identity-checked, duplicate-safe), `upstream_records`, `duplicate_uploads`, `forward_upstream`, `recover_upstream` |
+| `src/sslv1/mcc.py` | Group aggregation: all lamps unreachable -> group `UNAVAILABLE` |
+| `src/sslv1/nodes/group_controller.py` | `restart()` (documented retention kept, transaction state cleared, in-flight commands failed, restart audited with `nodes`/`cleared_requests`/`failed_commands`) |
+| `src/sslv1/nodes/group_controller.py` | `resynchronize_upstream()` (one deterministic `STORE -> RECOVERY -> SYNCHRONIZE -> UPLOAD -> CONFIRM` step with a stage report) |
+| `src/sslv1/nodes/group_controller.py` | `COMM_RECOVERED` emitted when a node link returns to `COMM_HEALTHY` from `DEGRADED`/`RECOVERY` |
+| `src/sslv1/nodes/group_controller.py` | `_time_sync_state()` gated on a verified node `TIME_ACK` |
+| `tests/mcc_harness.py` | `site_count`, `upstream_factory`, `cycle`, `restart_group`, `restart_lamp`, `silence_group`, `set_upstream`, accessors |
+
+### 12.2 Defects found and fixed
+
+| # | Defect | Consequence if unfixed | Fix | Evidence |
+| --- | --- | --- | --- | --- |
+| 1 | A group whose every lamp was unreachable was aggregated as `DEGRADED` | A total group outage looked like a partial degradation | All lamps `UNAVAILABLE` -> group `UNAVAILABLE`; one lamp among reporting lamps stays `DEGRADED`; all-`UNKNOWN` unchanged | `test_integration.py::test_a_silent_node_is_unavailable_at_the_mcc_while_its_neighbours_report`, `::test_one_groups_link_failure_cannot_contaminate_another_group`, `::test_two_sites_of_two_sixteen_lamp_groups_operate_deterministically` |
+| 2 | The Group Controller stamped its own records `SYNCHRONIZED` although no synchronization had ever been performed | Unsynchronized time presented as trustworthy, inherited by every upstream view | Stamp is `UNCERTAIN` until a node `TIME_ACK` is verified against the distributed tick; controller restart clears it | `test_integration.py::test_time_synchronization_propagates_and_is_visible_per_lamp`, `::test_event_and_fault_timestamps_come_from_the_logical_clock_only` |
+
+Three self-audit corrections to the Phase 16 code (a restarted controller now
+fails its in-flight commands instead of leaving them `ACKNOWLEDGED`; the MCC's
+received-record member is named `timestamp_ticks` because the MCC never
+re-stamps what it received; the integration report helper no longer treats "no
+measurement yet" as "behind") are recorded in `docs/13` section 13.3.
+
+### 12.3 Limitation discovered (documented, not hidden)
+
+The `FAULT_REPORT` pull carries a single active-fault snapshot, while
+`docs/03` allows concurrent faults on one lamp. With two confirmed faults only
+one is propagated, and a fault closed while another fault is the reported
+snapshot is never cleared upstream, so the MCC can keep listing a closed fault
+as active. No GC/MCC inference was added (it would either invent a clear or hide
+a possibly active fault); the fix is a fault-set report, a later-phase wire
+change. `PR-FAULT-007` therefore moved from `VERIFIED` to `PARTIAL`; the
+limitation is pinned by
+`test_integration.py::test_concurrent_confirmed_faults_are_bounded_by_the_single_fault_report_pull`
+and recorded in `docs/13` section 5.1.
+
+### 12.4 Validation results
+
+| Check | Result |
+| --- | --- |
+| Baseline before Phase 16 | 601 tests passed (`de03bc6`) |
+| `python3 -m pytest tests/test_integration.py` | 38 passed |
+| `python3 -m pytest` (full suite) | 639 passed |
+| `python3 -m compileall -q src tests` | exit 0 |
+| `pyflakes src/sslv1 tests/*.py` | 5 pre-existing findings, all in untouched `__init__.py` files; none from Phase 16 |
+| Traceability | 28 requirement rows gained real Phase 16 integration evidence (including the 20 whose verification method already cited Phase 16); `PR-FAULT-007` -> PARTIAL; limited rows updated with narrowed scope |
+| Main branch / PR #2 | untouched; all work on `arena/01a0dcf6-ssl` |
+
+### 12.5 Boundaries
+
+Only the digital model was exercised: in-memory frames, modelled field devices,
+logical time, object-retention restarts and software-scale runs. Nothing here
+validates electrical safety, mains behaviour, EMC/RF, surge/ESD, relay lifetime,
+metering accuracy, enclosure/IP properties, physical RTC behaviour,
+cryptography/tamper resistance, real RS-485 electrical behaviour, certification
+or production readiness. The `PARTIAL` and `PLANNED` rows above bound every
+claim.

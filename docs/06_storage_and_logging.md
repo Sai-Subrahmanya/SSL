@@ -200,6 +200,25 @@ upload queue**. The retained historical record is **not** deleted. Removal
 from a temporary upload queue and deletion of a retained historical record
 are distinct operations (`PR-STORAGE-009`).
 
+### 9.3.1 Phase 16 orchestration and receiving end
+
+The sequence is implemented as one deterministic step,
+`GroupController.resynchronize_upstream()`, which reports
+`recovered / stage / buffered / uploaded / confirmed / failed / remaining`.
+`MasterControlCenter.recover_upstream()` drives it per group, and
+`MccUpstreamLink` is the MCC end of the existing abstract upstream link: the MCC
+accepts each record identity once (arrival order preserved, duplicates counted
+but not stored twice), and refuses a record it cannot attribute to that group's
+controller so the sender keeps it pending. When the link is still down the step
+reports `recovered: False` at stage `RECOVERY` with every buffered record still
+pending - nothing is dropped and nothing is claimed as delivered.
+
+The automatic *trigger* for that step is not implemented: the digital model has
+no background scheduler, so recovery is detected by the caller (the MCC or a
+scenario) before the step runs. That is why `PR-OFFLINE-005` remains PARTIAL.
+Evidence: `tests/test_integration.py` (offline A-H and recovery tests), see
+[13_integration_validation.md](13_integration_validation.md) section 6.
+
 ### 9.4 No silent loss
 
 ```text

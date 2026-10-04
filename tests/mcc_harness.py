@@ -19,7 +19,7 @@ Domain decisions stay in the modules under test.
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from fault_injection import FaultyUpstreamLink
 from conftest import PRODUCT, healthy_sources, make_lamp_config
@@ -28,7 +28,13 @@ from sslv1.comm import InMemoryBus, MessageType
 from sslv1.control import ControlDecision
 from sslv1.identity import BusAddress, DeviceIdentity, Identifier
 from sslv1.mcc import MasterControlCenter, MasterControlCenterConfig
-from sslv1.nodes import GroupController, GroupControllerConfig, LampNode, LampNodeSources
+from sslv1.nodes import (
+    GroupController,
+    GroupControllerConfig,
+    LampNode,
+    LampNodeSources,
+    UpstreamLink,
+)
 from sslv1.time_model import LogicalClock
 
 #: Logical ticks per second used by every Phase 15 scenario.
@@ -67,6 +73,9 @@ class MccSim:
         group_storage_capacity: Optional[int] = None,
         lamp_config_overrides: Optional[Dict[str, object]] = None,
         status_max_age_ticks: Optional[int] = None,
+        upstream_factory: Optional[
+            Callable[["MasterControlCenter", Identifier, Identifier], UpstreamLink]
+        ] = None,
     ) -> None:
         if min(site_count, group_count, lamps_per_group) < 1:
             raise ValueError("a simulation needs at least one site, group and lamp")
@@ -78,9 +87,15 @@ class MccSim:
         )
         self._buses: Dict[Tuple[Identifier, Identifier], InMemoryBus] = {}
         self._controllers: Dict[Tuple[Identifier, Identifier], GroupController] = {}
-        self._upstreams: Dict[Tuple[Identifier, Identifier], FaultyUpstreamLink] = {}
+        self._upstreams: Dict[Tuple[Identifier, Identifier], UpstreamLink] = {}
         self._lamps: Dict[Tuple[Identifier, Identifier, Identifier], LampNode] = {}
         self._silent: Dict[Tuple[Identifier, Identifier, Identifier], bool] = {}
+        #: Builds the upstream link of one group, called as
+        #: ``factory(mcc, site, group)`` while the groups are being built. The
+        #: default is the injectable Phase 14 link; the Phase 16 integration
+        #: tests pass ``lambda mcc, site, group: MccUpstreamLink(...)`` so the
+        #: MCC itself is the other end of every upload.
+        self._upstream_factory = upstream_factory
 
         for site_index in range(site_count):
             site = site_identifier(site_index)
@@ -96,7 +111,11 @@ class MccSim:
     def _build_group(self, site, group, lamps_per_group, storage_capacity,
                      group_storage_capacity, lamp_config_overrides) -> None:
         bus = InMemoryBus()
-        upstream = FaultyUpstreamLink()
+        upstream = (
+            self._upstream_factory(self.mcc, site, group)
+            if self._upstream_factory is not None
+            else FaultyUpstreamLink()
+        )
         controller = GroupController(
             identity=DeviceIdentity(product_id=PRODUCT, site_id=site, group_id=group),
             config=GroupControllerConfig(
@@ -150,7 +169,7 @@ class MccSim:
     def bus(self, site: Identifier, group: Identifier) -> InMemoryBus:
         return self._buses[(ident(site), ident(group))]
 
-    def upstream(self, site: Identifier, group: Identifier) -> FaultyUpstreamLink:
+    def upstream(self, site: Identifier, group: Identifier) -> UpstreamLink:
         return self._upstreams[(ident(site), ident(group))]
 
     def node(self, site: Identifier, group: Identifier, lamp) -> LampNode:
@@ -242,6 +261,46 @@ class MccSim:
         for _ in range(count):
             for key in self._selected(site, group):
                 self.round(key[0], key[1], message_type)
+
+    def cycle(
+        self,
+        message_types: Tuple[MessageType, ...] = (
+            MessageType.STATUS_REQUEST,
+            MessageType.MEASUREMENT_REQUEST,
+            MessageType.FAULT_REPORT,
+            MessageType.EVENT_REPORT,
+        ),
+        site: Optional[Identifier] = None,
+        group: Optional[Identifier] = None,
+        ticks: Optional[int] = None,
+        forward: bool = False,
+    ) -> None:
+        """One complete system cycle for the selected groups.
+
+        Advance the logical clock, let the nodes run their control cycle (the
+        deterministic stand-in for time passing on the field devices), then run
+        one poll exchange per message type and optionally attempt the upstream
+        upload. Domain decisions stay in the modules under test; this only
+        pumps traffic.
+        """
+        for key in self._selected(site, group):
+            self.step_group(key[0], key[1], ticks=ticks)
+        for message_type in message_types:
+            self.rounds(1, message_type, site=site, group=group)
+        if forward:
+            self.mcc.forward_upstream(site, group)
+
+    def restart_group(
+        self, site: Identifier, group: Identifier, ticks: Optional[int] = None
+    ) -> Dict[str, int]:
+        """Simulate a Group Controller restart (transient state only)."""
+        return self.gc(site, group).restart(ticks)
+
+    def restart_lamp(
+        self, site: Identifier, group: Identifier, lamp, ticks: Optional[int] = None
+    ) -> None:
+        """Simulate a Lamp Node watchdog restart."""
+        self.node(site, group, lamp).restart(ticks)
 
     def expire(self, site: Identifier, group: Identifier, ticks: int) -> None:
         """Advance time and let the group controller service its timeouts."""

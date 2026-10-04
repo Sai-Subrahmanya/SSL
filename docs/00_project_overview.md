@@ -18,7 +18,7 @@ not itself introduce numbered requirements. Numbered requirements live in
 | --- | --- |
 | Project name | Smart Street Light V1 (SSL V1) |
 | Repository | `Sai-Subrahmanya/SSL` |
-| Current stage | Phases 1-15 complete as a deterministic digital prototype; Phase 16 onward not started |
+| Current stage | Phases 1-16 complete as a deterministic digital prototype; Phase 17 onward not started |
 | Repository classification | Early engineering / digital prototype development |
 | Production status | Not production firmware |
 
@@ -329,7 +329,7 @@ Details in [04_fault_management.md](04_fault_management.md).
 | Phase 13 | Multi-node simulation | Multiple lamp nodes, group behaviour, scalability. | Implemented (bounded digital model) |
 | Phase 14 | Fault injection | Deterministic fault injection and recovery behaviour (digital model only). | Implemented (deterministic digital model) |
 | Phase 15 | Master Control Center data layer | Sites, groups, lamps, aggregation, history, no GUI in early phases. | Implemented (deterministic digital data layer) |
-| Phase 16 | Full integration | End-to-end integration of all layers. | Not started |
+| Phase 16 | Full integration | End-to-end integration of all layers (MCC -> Group Controller -> Lamp Nodes -> reporting -> MCC aggregation), offline/recovery, restart/reconstruction and digital-scale checks. | Implemented (deterministic digital integration) |
 | Phase 17 | System validation | Validation against requirements, test evidence, traceability closure. | Not started |
 | Phase 18 | Engineering audit | Independent audit, engineering package preparation for partner review. | Not started |
 
@@ -337,10 +337,16 @@ Later phases are not implemented in advance. Each phase begins only after its
 requirements are documented and reviewed. Phase 15 delivered the logical
 Master Control Center data layer (`src/sslv1/mcc.py`) as an in-memory consumer
 of the existing controllers, per D-030 and D-041: no GUI, no persistence and no
-production backend exist.
+production backend exist. Phase 16 connected that layer to the field layers and
+executed the whole flow; it added no database, no second source of truth and no
+new fault semantics.
 
-Model availability is not a claim of full product completion. Seven requirements
-are PARTIAL and three remain PLANNED in the reconciled traceability matrix.
+Model availability is not a claim of full product completion. Phase 16
+integrated the layers end to end and added one finding to the reconciled
+traceability matrix: eight requirements are PARTIAL and three remain PLANNED
+(`PR-FAULT-007` moved to PARTIAL because the single-snapshot fault pull cannot
+propagate concurrent confirmed faults; see
+[13_integration_validation.md](13_integration_validation.md) section 5.1).
 Physical safety, EMC, RF, thermal/enclosure behavior, relay life and RTC backup
 remain unvalidated. The corrective implementation report defines the actual
 software evidence and remaining scope.

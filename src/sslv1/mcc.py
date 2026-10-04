@@ -30,6 +30,14 @@ storage or authorization, and it keeps no second copy of any of them. There is
 no MCC permission system: authorization stays in the existing services and the
 MCC adds no decision of its own.
 
+Phase 16 completes the **upstream end** of that architecture: the abstract
+upstream link of the Group Controller already uploads records, and
+:class:`MccUpstreamLink` makes the MCC the other end of it. The MCC accepts
+each record identity once (:meth:`MasterControlCenter.receive_upstream`), keeps
+them in arrival order - it adds no storage engine of its own, and what it holds
+is exactly what arrived - and can drive the documented post-recovery sequence
+through the controllers (:meth:`MasterControlCenter.recover_upstream`).
+
 Consequences stated rather than hidden:
 
 * the MCC can only show what a Group Controller has actually reported, so a
@@ -81,6 +89,7 @@ from .errors import ConfigurationError
 from .event import Event
 from .identity import BusAddress, Identifier
 from .nodes import GroupController, LampNode
+from .nodes.group_controller import UpstreamLink
 from .storage import StorageRecord
 from .time_model import LogicalClock
 
@@ -217,6 +226,78 @@ class SiteRegistration:
 # ---------------------------------------------------------------------------
 # Read models (views over the layers below, never a second lifecycle)
 # ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class ReceivedRecord:
+    """One record the MCC received from a Group Controller.
+
+    ``record`` is the existing :class:`~sslv1.storage.StorageRecord`, unchanged:
+    the MCC adds origin and arrival order, never a second record format.
+    """
+
+    site_id: Identifier
+    group_id: Identifier
+    record: StorageRecord
+
+    @property
+    def record_type(self):
+        return self.record.record_type
+
+    @property
+    def sequence_number(self) -> int:
+        return self.record.sequence_number
+
+    @property
+    def lamp_id(self) -> Optional[Identifier]:
+        lamp = self.record.payload.get("lamp_id")
+        return Identifier(str(lamp)) if lamp else None
+
+    @property
+    def timestamp_ticks(self) -> int:
+        """The record's own logical timestamp.
+
+        The MCC does not re-stamp what it received: arrival *order* is the
+        order of this list, and the record keeps the timestamp its device
+        wrote.
+        """
+        return self.record.timestamp.ticks
+
+
+class MccUpstreamLink(UpstreamLink):
+    """The Master Control Center end of the existing abstract upstream link.
+
+    ``GroupController`` uploads records through an injected
+    :class:`~sslv1.nodes.group_controller.UpstreamLink`; this implementation
+    connects one group's controller to the MCC. It is wired per group, because
+    a group identity is only unique within its site, and it refuses records
+    that do not belong to that group's controller - an unidentifiable upload
+    stays pending at the sender instead of appearing in the MCC history.
+    """
+
+    def __init__(
+        self,
+        mcc: "MasterControlCenter",
+        site: Identifier,
+        group: Identifier,
+        available: bool = True,
+    ) -> None:
+        self._mcc = mcc
+        self._site = _identifier(site)
+        self._group = _identifier(group)
+        self._available = available
+
+    def available(self) -> bool:
+        return self._available
+
+    def set_available(self, available: bool) -> None:
+        """The upstream outage injection point (link down toward the MCC)."""
+        self._available = available
+
+    def upload(self, record: StorageRecord) -> bool:
+        if not self._available:
+            return False
+        return self._mcc.receive_upstream(self._site, self._group, record)
+
+
 @dataclass(frozen=True)
 class FaultSummary:
     """An active fault as the MCC currently knows it.
@@ -374,6 +455,9 @@ class MasterControlCenter:
         self.config = (config or MasterControlCenterConfig()).validated()
         self.clock = clock or LogicalClock()
         self._sites: Dict[Identifier, SiteRegistration] = {}
+        self._received: List[ReceivedRecord] = []
+        self._received_identities: set = set()
+        self._duplicate_uploads = 0
 
     # ------------------------------------------------------------------
     # registry: sites
@@ -603,6 +687,118 @@ class MasterControlCenter:
         return dict(node_registration.configuration)
 
     # ------------------------------------------------------------------
+    # upstream: records the group controllers delivered (Phase 16)
+    # ------------------------------------------------------------------
+    def receive_upstream(
+        self, site: Identifier, group: Identifier, record: StorageRecord
+    ) -> bool:
+        """Accept one uploaded record from a Group Controller.
+
+        Returns ``True`` when the record is now held by the MCC. A record that
+        was already received is **also** ``True``: the sender's confirmation
+        semantics are "the far end has it", and a re-sent record after a lost
+        confirmation must not be reported to the sender as a failure while the
+        record is in fact delivered. The duplicate is counted, not stored
+        twice, so duplicate delivery cannot corrupt or duplicate history.
+
+        Returns ``False`` only for a record the MCC cannot attribute to that
+        group's controller, or that contradicts its own scope, so it stays
+        pending at the sender and remains visible as pending instead of
+        silently vanishing.
+
+        The record envelope carries ``device_id``, which for a group-level
+        device is the group id (``docs/03``): group ids are unique inside a
+        site, not across sites, so the *site* is established by the link that
+        delivered the record. Everything the record itself still states about
+        its scope is checked here:
+        record validity, the site/group the record names (measurement
+        payloads carry them), and that any lamp it names is registered with
+        that group's controller. A mis-delivered record is therefore refused
+        rather than filed under the wrong site, group or lamp.
+        """
+        registration = self.group(site, group)
+        if record.device_id != registration.controller.identity.device_id:
+            return False
+        if not record.is_valid():
+            return False
+        payload = record.payload or {}
+        for name, expected in (("site_id", registration.site_id),
+                               ("group_id", registration.group_id)):
+            claimed = payload.get(name)
+            if claimed is not None and str(claimed) != str(expected):
+                return False
+        lamp = payload.get("lamp_id")
+        if lamp is not None and registration.controller.registration_for(
+                Identifier(str(lamp))) is None:
+            return False
+        identity = (str(site), str(group), record.record_type.value, record.sequence_number)
+        if identity in self._received_identities:
+            self._duplicate_uploads += 1
+            return True
+        self._received_identities.add(identity)
+        self._received.append(
+            ReceivedRecord(site_id=registration.site_id, group_id=registration.group_id,
+                           record=record)
+        )
+        return True
+
+    def upstream_records(
+        self,
+        site: Optional[Identifier] = None,
+        group: Optional[Identifier] = None,
+        record_type: Optional[RecordType] = None,
+        lamp: Optional[Identifier] = None,
+    ) -> Tuple[ReceivedRecord, ...]:
+        """Records the MCC received, in arrival order.
+
+        Arrival order is the MCC's own deterministic ordering evidence; the
+        per-device upload order is asserted in the tests, it is not assumed
+        here. Nothing is reordered, aggregated or rewritten.
+        """
+        selected = tuple(self._iter_groups(site, group))
+        scope = {(registration.site_id, registration.group_id) for registration in selected}
+        records = []
+        for received in self._received:
+            if (received.site_id, received.group_id) not in scope:
+                continue
+            if record_type is not None and received.record_type is not record_type:
+                continue
+            if lamp is not None and received.lamp_id != _identifier(lamp):
+                continue
+            records.append(received)
+        return tuple(records)
+
+    @property
+    def duplicate_uploads(self) -> int:
+        """How many already-received records were offered again."""
+        return self._duplicate_uploads
+
+    def forward_upstream(
+        self, site: Optional[Identifier] = None, group: Optional[Identifier] = None
+    ) -> Dict[Tuple[Identifier, Identifier], Dict[str, int]]:
+        """Upload pending records through the existing routers, per group."""
+        return {
+            (registration.site_id, registration.group_id):
+                registration.controller.forward_upstream()
+            for registration in self._iter_groups(site, group)
+        }
+
+    def recover_upstream(
+        self, site: Optional[Identifier] = None, group: Optional[Identifier] = None
+    ) -> Dict[Tuple[Identifier, Identifier], Dict[str, object]]:
+        """Run the documented post-recovery sequence, per selected group.
+
+        Delegates to ``GroupController.resynchronize_upstream``: the sequence
+        belongs to the layer that owns the buffer and the link, the MCC only
+        drives it (``PR-OFFLINE-005``).
+        """
+        return {
+            (registration.site_id, registration.group_id):
+                registration.controller.resynchronize_upstream()
+            for registration in self._iter_groups(site, group)
+        }
+
+    # ------------------------------------------------------------------
     # fault and event visibility (existing structures only)
     # ------------------------------------------------------------------
     def fault_records(
@@ -788,6 +984,12 @@ class MasterControlCenter:
             health = AggregateHealth.UNAVAILABLE
         elif all(s.availability is LampAvailability.UNKNOWN for s in statuses):
             health = AggregateHealth.UNKNOWN
+        elif all(s.availability is LampAvailability.UNAVAILABLE for s in statuses):
+            # Every lamp of the group is unreachable: the group is unavailable,
+            # not merely degraded. Calling it degraded would understate the
+            # failure of the whole group (one unreachable lamp of many *is*
+            # degradation, which the branch below reports).
+            health = AggregateHealth.UNAVAILABLE
         elif all(s.availability is LampAvailability.HEALTHY for s in statuses) and not faults:
             health = AggregateHealth.HEALTHY
         else:

@@ -156,6 +156,28 @@ does not change another group's reported state.
 
 ---
 
+### 7.3 Phase 16 full-integration evidence
+
+Phase 16 runs the complete digital hierarchy (Master Control Center over Group
+Controller over Lamp Nodes) in one deterministic system:
+
+| Item | Value |
+| --- | --- |
+| Harness | `tests/mcc_harness.py` (real `LampNode`/`GroupController`/`MasterControlCenter` objects, shared logical clock and authorization service, in-memory bus, injectable upstream link) |
+| Scenarios | `tests/test_integration.py` (38 tests: scenarios A-D, fault path, offline A-H, restart/reconstruction, multi-group/multi-site, communication, configuration, time/freshness, digital scale, negative/authorization) |
+| Determinism | One logical clock, no randomness, no wall-clock dependency in the assertions, no I/O |
+| Scope claim | Integrated modelled behaviour only; no hardware, serial-electrical, EMC/RF, RTC or production claim |
+| Tests | `python3 -m pytest tests/test_integration.py` (38) and the full suite (639) |
+| Findings | Two production defects fixed (all-unavailable group aggregation; Group Controller time-synchronization claim) and one status change (`PR-FAULT-007` to PARTIAL, concurrent-fault pull limit) |
+
+The integration tests assert what the MCC was actually told, never what the
+simulation internally knows: a lamp step that was not reported does not change
+the MCC view, and an execution ACK is never treated as actual-state
+verification. Details are in
+[13_integration_validation.md](13_integration_validation.md).
+
+---
+
 ## 8. Evidence requirements
 
 Each phase shall produce:
@@ -167,7 +189,7 @@ Each phase shall produce:
 | Deviation record | Any requirement not met, with reason and disposition. |
 | Review note | Reviewer comments, recorded under `docs/review/`. |
 
-### 8.1 Evidence produced for Phases 1-15
+### 8.1 Evidence produced for Phases 1-16
 
 The deterministic suite now lives in [`tests/`](../tests/) and is run with
 `python3 -m pytest` from the repository root. It uses only Python 3.9+ and
@@ -192,6 +214,7 @@ pytest.
 | `tests/test_fault_injection.py` | Phase 14 injected-fault scenarios: 12 fault categories and the A-J end-to-end scenarios. |
 | `tests/mcc_harness.py` | Phase 15 Master Control Center simulation harness (`MccSim`); test support, not production code. |
 | `tests/test_mcc.py` | Phase 15 MCC data-layer scenarios: registries, aggregation, degradation, fault/event visibility, commands, authorization, config readback, local independence and end-to-end scenarios. |
+| `tests/test_integration.py` | Phase 16 full-integration scenarios (38): scenarios A-D, fault path to the MCC, offline/store-and-forward A-H, restart/reconstruction, multi-group/multi-site isolation, communication including negative frames, configuration with readback, time/freshness, digital/software-scale and authorization negatives. |
 
 Every `VERIFIED` entry in
 [requirements_traceability.md](requirements_traceability.md) names the module
@@ -265,7 +288,7 @@ logic only**. This is stated explicitly in the traceability record.
 | Test strategy defined | Yes |
 | Fault injection matrix defined | Yes |
 | Test identifiers / tooling | pytest; deterministic logical clock, no wall clock or randomness |
-| Tests implemented | Yes - `tests/` covers Phases 1-15; see section 8.1 |
+| Tests implemented | Yes - `tests/` covers Phases 1-16 (639 tests); see section 8.1 |
 
 ---
 

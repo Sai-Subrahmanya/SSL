@@ -180,12 +180,12 @@ its requirements, architecture and design are documented.
 | Phase 13 | Multi-node simulation | Implemented (bounded digital model) |
 | Phase 14 | Fault injection | Implemented (deterministic digital model) |
 | Phase 15 | Master Control Center data layer | Implemented (deterministic digital data layer) |
-| Phase 16 | Full integration | Not started |
+| Phase 16 | Full integration | Implemented (deterministic digital integration) |
 | Phase 17 | System validation | Not started |
 | Phase 18 | Engineering audit | Not started |
 
 The phase table indicates model availability, not full product completion.
-Seven requirements remain PARTIAL and three PLANNED. Passing tests or the mere
+Eight requirements remain PARTIAL and three PLANNED. Passing tests or the mere
 existence of modules does not establish requirement verification. See
 [docs/requirements_traceability.md](docs/requirements_traceability.md) for bounded
 per-requirement evidence and [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
@@ -302,6 +302,7 @@ Hardware components referenced anywhere in the documentation are
     |-- 10_hardware_reference.md               Hardware candidates (not final)
     |-- 11_assumptions.md                      Assumptions register
     |-- 12_engineering_decisions.md            Engineering decision log
+    |-- 13_integration_validation.md           Phase 16 full-integration validation and limits
     |-- requirements_traceability.md           Requirement -> module -> test -> status
     |-- review/                                Independent technical review records
     `-- demo/                                  Demonstration material
@@ -354,7 +355,7 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Engineering decision log | 41 decisions recorded |
 | Requirements traceability | Regenerated: See reconciled VERIFIED / PARTIAL / PLANNED counts in docs/requirements_traceability.md |
 | Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (601 tests, all passing), including the Phase 14 fault-injection scenarios and the Phase 15 MCC data-layer scenarios |
+| Deterministic test suite | Implemented in `tests/` (639 tests, all passing), including the Phase 14 fault-injection scenarios, the Phase 15 MCC data-layer scenarios and the Phase 16 full-integration scenarios (`tests/test_integration.py`, 38 tests) |
 | Physical validation | **Not started** - requires hardware |
 
 "Digital prototype" status means deterministic software behaviour has been
@@ -371,6 +372,7 @@ duration or certification) has been validated.
 - [docs/02_product_requirements.md](docs/02_product_requirements.md)
 - [docs/11_assumptions.md](docs/11_assumptions.md)
 - [docs/12_engineering_decisions.md](docs/12_engineering_decisions.md)
+- [docs/13_integration_validation.md](docs/13_integration_validation.md)
 - [docs/requirements_traceability.md](docs/requirements_traceability.md)
 - [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
 
@@ -389,7 +391,23 @@ results and remaining limitations are in
 status is no longer inferred merely from an existing module and passing test.
 The Phase 15 Master Control Center is an in-memory data/orchestration layer over
 the existing controllers (no GUI, no persistence, no production backend); it
-does not close the PARTIAL rows. Structured remote configuration, automated
+does not close the PARTIAL rows.
+
+Phase 16 integrates those layers end to end (`tests/test_integration.py`, 38
+tests; harness `tests/mcc_harness.py`): authorized commands reach the addressed
+lamp and are only verified against observed state, faults reach the operator
+layer through the existing lifecycle, records buffered during an upstream
+outage are recovered, uploaded once and confirmed, restarts keep what the
+architecture promises to persist and the MCC reconstructs its view from the
+controllers, multi-group/multi-site identities stay isolated, and a
+digital/software-scale run of 2 sites x 2 groups x 16 lamps completes
+deterministically. Two defects were fixed (a wholly unreachable group was
+reported as only degraded; the Group Controller stamped `SYNCHRONIZED` without
+any verified synchronization). The integration also exposed a reporting limit:
+the `FAULT_REPORT` pull carries a single fault snapshot, so concurrent confirmed
+faults cannot both be propagated - `PR-FAULT-007` is now PARTIAL and the gap is
+documented in [docs/13_integration_validation.md](docs/13_integration_validation.md)
+rather than smoothed over. Structured remote configuration, automated
 repair-evidence comparison, production multi-group deployment, calibration
 storage and automatic GC-link fault workflow integration remain explicitly
 PARTIAL. This is a digital engineering

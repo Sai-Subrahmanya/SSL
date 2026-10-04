@@ -179,6 +179,10 @@ class GroupController:
         self._by_lamp: Dict[Identifier, NodeRegistration] = {}
         self._sequence = 0
         self._command_sequence = 0
+        #: Whether a time distribution has actually been verified with a node.
+        #: Records this controller stamps itself must not claim a
+        #: synchronization that never happened (``PR-TIME``).
+        self._time_synchronized = False
         self._last_poll_ticks: Optional[int] = None
         self._incoming: List[Frame] = []
         self.bus.attach(MASTER_ADDRESS, self)
@@ -316,6 +320,120 @@ class GroupController:
         if pending['record'] is not None:
             self._pending_commands.pop(pending['record'].command_id, None)
 
+    def restart(self, ticks: Optional[int] = None) -> Dict[str, int]:
+        """Simulate a Group Controller restart / reinitialization.
+
+        The documented digital persistence model is object retention across a
+        restart (``docs/09``): identity, configuration, registrations, replay
+        history and the retained record store survive. What does **not**
+        survive is transient transaction state, because a restarted device has
+        no requests in flight:
+
+        * queued and pending requests, their deadlines and the volatile
+          per-node views (last measurement, last status, last ACK payloads),
+        * queued inbound frames from before the restart,
+        * in-flight command transactions, which end ``FAILED``: a restarted
+          controller cannot verify a command whose evidence died with it, and
+          leaving them ``RECEIVED``/``ACKNOWLEDGED`` would present a dead
+          transaction as one still awaiting evidence.
+
+        The replay window (``registration.sequences``) is deliberately kept: a
+        device that forgot which frames it had already seen would accept
+        replays, so a restart must not weaken replay detection. Per-node
+        communication state is kept as well: it describes the node link, not a
+        transaction this controller owns.
+
+        Returns a small report of what was cleared, so a caller can assert on
+        the restart rather than trust it.
+        """
+        ticks = self.clock.ticks if ticks is None else ticks
+        cleared_requests = 0
+        failed_commands = 0
+        for record in self.commands.records:
+            if record.state in (CommandState.RECEIVED, CommandState.EXECUTED,
+                                CommandState.ACKNOWLEDGED):
+                self.commands.advance(record, CommandState.FAILED, ticks,
+                                      "group controller restarted before verification")
+                failed_commands += 1
+        for registration in self.registrations:
+            cleared_requests += len(registration.pending_requests)
+            registration.pending_requests.clear()
+            registration.awaiting_response = False
+            registration.last_poll_success = False
+            registration.last_seen_ticks = None
+            registration.last_measurement = None
+            registration.status = None
+            registration.time_ack = None
+            registration.heartbeat_ack = None
+        # The evidence of a verified synchronization is transient state too.
+        self._time_synchronized = False
+        self._pending.clear()
+        self._pending_commands.clear()
+        self._incoming.clear()
+        self._last_poll_ticks = None
+        self._record_event(
+            # ``NODE_RESTARTED`` is the existing vocabulary for "this device
+            # restarted and lost transient state" (the Lamp Node uses it too);
+            # a controller restart is not a first start.
+            EventType.NODE_RESTARTED, EventSource.SYSTEM, EventSeverity.WARNING,
+            "group controller restarted; transaction state reinitialized",
+            data={"nodes": self.node_count, "cleared_requests": cleared_requests,
+                  "failed_commands": failed_commands},
+        )
+        return {"nodes": self.node_count, "cleared_requests": cleared_requests,
+                "failed_commands": failed_commands}
+
+    def resynchronize_upstream(self) -> Dict[str, object]:
+        """Run the documented post-recovery sequence for buffered records.
+
+        ``STORE -> RECOVERY -> SYNCHRONIZE -> UPLOAD -> CONFIRM``
+        (``PR-STORAGE-008``, ``PR-OFFLINE-005``). The digital model has no
+        background thread, so this method *is* the orchestration: one
+        deterministic step that reports what happened at every stage.
+
+        * RECOVERY - the upstream link is available again. If it is not, nothing
+          is attempted and every buffered record is reported as still pending;
+          a record is never dropped, and a failed attempt is never reported as
+          delivered.
+        * SYNCHRONIZE - the pending queue is read in sequence order, so nothing
+          is skipped in this pass and nothing is uploaded twice.
+        * UPLOAD / CONFIRM - delegated to the existing ``forward_upstream``
+          path, where a record leaves the pending queue only on confirmation
+          and upload confirmation never deletes history (``PR-STORAGE-009``).
+
+        The recovery notice is itself an audit event and is therefore buffered
+        and uploaded in the same pass, which is why ``confirmed`` can exceed
+        the number of records that were pending when the call started.
+        """
+        buffered = [record.sequence_number for record in self.storage.pending_upload]
+        if not self.upstream.available():
+            return {
+                "recovered": False,
+                "stage": "RECOVERY",
+                "buffered": buffered,
+                "uploaded": 0,
+                "confirmed": 0,
+                "failed": len(buffered),
+                "remaining": buffered,
+            }
+        if buffered:
+            self._record_event(
+                EventType.COMM_RECOVERED, EventSource.COMMUNICATION, EventSeverity.INFO,
+                "upstream link recovered; %d buffered records await upload" % len(buffered),
+                data={"buffered": buffered},
+            )
+        result = self.forward_upstream()
+        remaining = [record.sequence_number for record in self.storage.pending_upload]
+        return {
+            "recovered": True,
+            "stage": "CONFIRM" if not remaining else "UPLOAD",
+            "buffered": buffered,
+            "uploaded": result["uploaded"],
+            "confirmed": result["confirmed"],
+            "failed": result["failed"],
+            "remaining": remaining,
+        }
+
     def service_timeouts(self) -> None:
         for key, pending in list(self._pending.items()):
             if self.clock.ticks < pending['deadline']:
@@ -439,6 +557,7 @@ class GroupController:
                 if fields['master_ticks'] != request_fields['master_ticks'] or fields['local_ticks'] != fields['master_ticks']:
                     raise ProtocolError("time ACK did not synchronize to requested tick")
                 registration.time_ack = dict(fields)
+                self._time_synchronized = True
                 self._record_event(EventType.TIME_SYNCHRONIZED, EventSource.TIME, EventSeverity.INFO,
                                    "node time synchronization verified", data=dict(fields, address=frame.source),
                                    actor=request_fields["actor"].actor_id)
@@ -452,7 +571,21 @@ class GroupController:
             else:
                 raise ProtocolError("unsupported response")
             registration.sequences.record(frame.sequence)
-            registration.comm.record_success()
+            previous_state = registration.comm.state
+            current_state = registration.comm.record_success()
+            if current_state is CommState.COMM_HEALTHY and previous_state in (
+                    CommState.DEGRADED, CommState.RECOVERY):
+                # The documented event vocabulary has COMM_RECOVERED
+                # (``docs/03``) and a link that returns from degradation or a
+                # communication fault is exactly that fact. Without it the
+                # recovery is invisible to every upstream layer, which would
+                # see the degradation but never its end.
+                self._record_event(
+                    EventType.COMM_RECOVERED, EventSource.COMMUNICATION, EventSeverity.INFO,
+                    "node link recovered from %s" % previous_state.value,
+                    data={"address": int(frame.source), "previous": previous_state.value,
+                          "current": current_state.value},
+                )
             registration.last_seen_ticks = self.clock.ticks
             if complete:
                 self._finish_request(key, True)
@@ -860,9 +993,21 @@ class GroupController:
         return registration
 
     def _time_sync_state(self):
+        """Time validity of the records this controller stamps itself.
+
+        The controller is the time master for its group, but stamping
+        ``SYNCHRONIZED`` on its own records before any synchronization has been
+        verified would be an invented validity claim - the same defect the node
+        layer already refuses (an offline node never claims synchronized time).
+        The stamp becomes ``SYNCHRONIZED`` only once a node has confirmed the
+        distributed time (verified ``TIME_ACK``); until then it is
+        ``UNCERTAIN``.
+        """
         from ..enums import TimeSyncState
 
-        return TimeSyncState.SYNCHRONIZED
+        if self._time_synchronized:
+            return TimeSyncState.SYNCHRONIZED
+        return TimeSyncState.UNCERTAIN
 
     def _comm_status(self, registration: NodeRegistration):
         from ..enums import CommunicationStatus

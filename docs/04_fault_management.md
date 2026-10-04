@@ -484,3 +484,28 @@ PR-FAULT-011 is PARTIAL for that reason. Likewise, GC communication health and
 fault events are implemented, but automatic conversion of every GC link fault
 into a fully managed per-lamp FaultEngine workflow remains an integration
 limitation (PR-COMM-008). These are not hardware-validation claims.
+
+---
+
+## 12. Fault reporting to the operator layer (Phase 16 boundary)
+
+A confirmed fault is notified locally through the notification engine
+(`PR-FAULT-007`, `PR-FAULT-008`) and reaches the operator layer when the Group
+Controller polls it (`FAULT_REPORT`) and the Master Control Center derives its
+active-fault view from the records the group actually received.
+
+The poll carries **one active-fault snapshot** (`docs/05` section 5). `docs/03`
+allows a lamp to hold concurrent faults, so the digital model has an explicit
+boundary here:
+
+- with two confirmed faults on one lamp, only the reported snapshot identity is
+  propagated while it remains the snapshot;
+- a fault closed while a *different* fault is being reported is not recorded as
+  cleared at the group, so the MCC can keep listing it as active until the
+  reporting contract carries the whole active set.
+
+No inference was added at the Group Controller or MCC: recording a clear that
+was never observed would fabricate a fact, and dropping the older identity
+would hide a fault that may still be active. The limit is pinned by
+`tests/test_integration.py::test_concurrent_confirmed_faults_are_bounded_by_the_single_fault_report_pull`
+and bounds `PR-FAULT-007` to `PARTIAL` until a fault-set report exists.

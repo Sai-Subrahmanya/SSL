@@ -727,7 +727,7 @@ must produce one latched fault condition, not a stream of new alerts.
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 6); integration test (Phase 16)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 A confirmed fault shall be notified to the operator layer, and the
@@ -735,6 +735,17 @@ notification status shall be tracked on the fault record.
 
 **Rationale.**
 Faults that are detected but never surfaced provide no operational value.
+
+**Known limitation (Phase 16).**
+The node notifies and tracks notification state per fault, and the Phase 16
+integration verifies the whole path for a lamp's reported fault. However, the
+`FAULT_REPORT` pull carries a single active-fault snapshot (`docs/03` allows
+concurrent faults on one lamp): with two confirmed faults only one is
+propagated while it is the snapshot, and a fault closed while another fault is
+being reported is never cleared upstream, so the operator view can list a
+closed fault as active. A fault-set report is a wire-contract change for a later
+phase; no GC/MCC-side inference was added because it would either invent a
+clear or hide a possibly active fault.
 
 ---
 
@@ -1835,7 +1846,7 @@ The requirements themselves are not weakened to fit the implementation.
 
 ## Corrective verification scope (2026-09-26)
 
-Current status: 78 VERIFIED (bounded digital behavior), 7 PARTIAL, 3 PLANNED.
+Current status: 77 VERIFIED (bounded digital behavior), 8 PARTIAL, 3 PLANNED.
 These statuses supersede blanket completion summaries. The full requirements
 are unchanged; PARTIAL exposes missing integration/schema/application scope
 rather than silently relaxing a requirement. The corrective implementation and

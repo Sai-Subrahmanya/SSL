@@ -207,6 +207,34 @@ answered here and neither is a product requirement change:
 
 ---
 
+## Phase 16 integration boundaries
+
+Phase 16 connects the existing layers into one executable system
+(MCC -> Group Controller -> Lamp Nodes -> reporting -> MCC aggregation) and
+fixed two defects the integration exposed. The boundaries that remain are
+recorded here and in
+[13_integration_validation.md](13_integration_validation.md) section 15:
+
+- the `FAULT_REPORT` pull carries a single active-fault snapshot, so concurrent
+  confirmed faults on one lamp cannot both be propagated and a fault closed
+  while another is reported is not cleared upstream (`PR-FAULT-007` is PARTIAL);
+- recovery orchestration exists as one deterministic step, but its automatic
+  trigger does not, because the model has no background scheduler
+  (`PR-OFFLINE-005` is PARTIAL);
+- the MCC keeps received records in memory only, with no database, and derives
+  every view from the controllers it holds (no second source of truth);
+- restart is digital object re-initialisation - no flash retention, brown-out or
+  MCU power-loss behaviour is modelled;
+- configuration is verified end to end only for the integer-scalar subset, and
+  is not stored from a physically separate configuration medium;
+- scale evidence is 2 sites x 2 groups x 16 lamps of *software* behaviour; no
+  embedded CPU/memory/bus-timing claim is made;
+- the upstream link and the field bus are modelled in memory; no serial
+  electrical behaviour, network stack, transport timeout or retry protocol is
+  claimed;
+- security remains an asserted actor on a trusted bus (`PR-SECURITY-004/005`
+  stay PLANNED).
+
 ## Remaining model boundaries after the corrective pass
 
 Authentication remains an asserted Actor flag/role on a trusted in-memory bus,
@@ -218,6 +246,9 @@ physical calibration storage and automatic GC-link-to-managed-fault adaptation
 are not completed features. The Phase 15 Master Control Center is an in-memory
 data/orchestration layer over the existing controllers: it has no GUI, no
 persistence, no production backend and no validated production multi-site
-deployment.
+deployment. Phase 16 made that layer the upstream end of the existing link and
+proved the integrated flow end to end; it did not turn the model into a
+deployable system, and the concurrent-fault reporting limit bounds
+`PR-FAULT-007` to PARTIAL.
 See PARTIAL/PLANNED rows in requirements_traceability.md; no blanket completion
 claim supersedes those limitations.
