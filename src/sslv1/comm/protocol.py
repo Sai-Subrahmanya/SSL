@@ -296,6 +296,12 @@ def _decode_fault_report(data: bytes) -> Dict[str, object]:
 
 
 def _encode_event_report(fields: Mapping[str, object]) -> bytes:
+    # Event identities start at one (``EventLog``), so zero is the canonical
+    # "nothing pending" answer to an ``EVENT_REPORT`` pull. It carries no
+    # event body: answering every pull keeps silence meaning only one thing,
+    # a failed link.
+    if int(fields["event_id"]) == 0:
+        return b""
     _require(fields, "event_id", "event_type", "reason")
     return b"".join(
         [
@@ -307,6 +313,8 @@ def _encode_event_report(fields: Mapping[str, object]) -> bytes:
 
 
 def _decode_event_report(data: bytes) -> Dict[str, object]:
+    if not data:
+        return {"event_id": 0}
     if len(data) < 13:
         raise ProtocolError("EVENT_REPORT payload too short")
     event_id, severity = struct.unpack_from(">IQ", data, 0)

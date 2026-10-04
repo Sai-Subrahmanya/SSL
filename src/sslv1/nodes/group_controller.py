@@ -503,6 +503,11 @@ class GroupController:
     def _ingest_measurement(
         self, registration: NodeRegistration, fields: Dict[str, object]
     ) -> None:
+        # An explicit "no measurement available" indication (empty availability
+        # mask and no stored-record identity) proves the link is healthy but
+        # must not be registered as a measurement or buffered as a record.
+        if not fields.get("available_mask") and not fields.get("record_sequence", 0):
+            return
         measurement = Measurement(
             timestamp=Timestamp(
                 ticks=int(fields["timestamp_ticks"]),
@@ -531,14 +536,25 @@ class GroupController:
             registration.confirmed_record_sequence = record_sequence
             return
         registration.last_measurement = measurement
+        if not record_sequence:
+            # A response without a stored-record identity is a live-only reading
+            # (``docs/05``, revision 2 contract: "zero for live-only readings").
+            # It refreshes the live view but must never be buffered as a new
+            # historical record, otherwise every idle poll would duplicate the
+            # last measurement into the group store and upload it again.
+            return
         stored = self._buffer_record(RecordType.MEASUREMENT, measurement.to_dict())
-        if stored and record_sequence:
+        if stored:
             registration.received_record_sequences.add(record_sequence)
             registration.confirmed_record_sequence = record_sequence
 
     def _ingest_fault(
         self, registration: NodeRegistration, fields: Dict[str, object]
     ) -> None:
+        if not fields.get("fault_id"):
+            # "No active fault" answer to a validated pull: a healthy exchange,
+            # not something to buffer as a fault record.
+            return
         self._buffer_record(
             RecordType.FAULT,
             {
@@ -555,6 +571,11 @@ class GroupController:
 
     def _ingest_event(self, registration, fields):
         event_id = int(fields['event_id'])
+        if event_id == 0:
+            # Explicit "nothing pending" answer to a validated pull. Event
+            # identities start at one, so zero carries no event to buffer and
+            # no confirmation to advance.
+            return
         if event_id in registration.received_event_ids:
             registration.confirmed_event_id = event_id
             return

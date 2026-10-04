@@ -18,7 +18,7 @@ not itself introduce numbered requirements. Numbered requirements live in
 | --- | --- |
 | Project name | Smart Street Light V1 (SSL V1) |
 | Repository | `Sai-Subrahmanya/SSL` |
-| Current stage | Phases 1-13 complete as a deterministic digital prototype; Phase 14 onward not started |
+| Current stage | Phases 1-14 complete as a deterministic digital prototype; Phase 15 onward not started |
 | Repository classification | Early engineering / digital prototype development |
 | Production status | Not production firmware |
 
@@ -327,7 +327,7 @@ Details in [04_fault_management.md](04_fault_management.md).
 | Phase 11 | Communication failure / recovery | Communication state machine, degradation, recovery, re-synchronization. | Implemented (bounded digital model) |
 | Phase 12 | Configuration | Configuration model, distribution, validation, auditability. | Implemented (bounded digital model) |
 | Phase 13 | Multi-node simulation | Multiple lamp nodes, group behaviour, scalability. | Implemented (bounded digital model) |
-| Phase 14 | Fault injection | Deterministic fault injection and recovery behaviour. | Not started |
+| Phase 14 | Fault injection | Deterministic fault injection and recovery behaviour (digital model only). | Implemented (deterministic digital model) |
 | Phase 15 | Master Control Center data layer | Sites, groups, lamps, aggregation, history, no GUI in early phases. | Not started |
 | Phase 16 | Full integration | End-to-end integration of all layers. | Not started |
 | Phase 17 | System validation | Validation against requirements, test evidence, traceability closure. | Not started |

@@ -178,7 +178,7 @@ its requirements, architecture and design are documented.
 | Phase 11 | Communication failure / recovery | Implemented (bounded digital model) |
 | Phase 12 | Configuration | Implemented (bounded digital model) |
 | Phase 13 | Multi-node simulation | Implemented (bounded digital model) |
-| Phase 14 | Fault injection | Not started |
+| Phase 14 | Fault injection | Implemented (deterministic digital model) |
 | Phase 15 | Master Control Center data layer | Not started |
 | Phase 16 | Full integration | Not started |
 | Phase 17 | System validation | Not started |
@@ -354,7 +354,7 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Engineering decision log | 40 decisions recorded |
 | Requirements traceability | Regenerated: See reconciled VERIFIED / PARTIAL / PLANNED counts in docs/requirements_traceability.md |
 | Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (438 tests, all passing) |
+| Deterministic test suite | Implemented in `tests/` (546 tests, all passing), including the Phase 14 fault-injection scenarios |
 | Physical validation | **Not started** - requires hardware |
 
 "Digital prototype" status means deterministic software behaviour has been
@@ -383,8 +383,9 @@ Protocol version **2** retains the 17 message types and adds actor assertions,
 response correlation, configuration readback and observation metadata. It is
 not wire-compatible with the earlier prototype version 1.
 
-The complete corrective findings, test inventory and remaining limitations are
-in [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md). Requirement
+The complete corrective findings, test inventory, Phase 14 fault-injection
+results and remaining limitations are in
+[docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md). Requirement
 status is no longer inferred merely from an existing module and passing test.
 Structured remote configuration, automated repair-evidence comparison, complete
 multi-group MCC behavior, calibration storage and automatic GC-link fault

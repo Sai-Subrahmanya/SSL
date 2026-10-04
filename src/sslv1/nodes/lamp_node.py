@@ -31,11 +31,16 @@ from ..enums import (
     ConfiguredMode,
     ControlSubtype,
     ControllerStatus,
+    DiagnosticClassification,
     EventSeverity,
     EventSource,
     EventType,
+    FaultSeverity,
+    FaultState,
+    FaultType,
     LampState,
     MessageType,
+    NotificationState,
     OverrideState,
     RecordType,
     SensorStatus,
@@ -482,8 +487,6 @@ class LampNode(BusEndpoint):
         return self._respond(frame, MessageType.STATUS_RESPONSE, payload)
 
     def _handle_measurement_request(self, frame: Frame) -> Optional[Frame]:
-        if self._last_measurement is None:
-            return None
         from ..comm.protocol import decode_payload
         from ..errors import StorageError
         fields = decode_payload(MessageType.MEASUREMENT_REQUEST, frame.payload)
@@ -495,6 +498,31 @@ class LampNode(BusEndpoint):
                 self.storage.mark_confirmed(confirmed)
             except StorageError as exc:
                 raise ProtocolError(str(exc)) from exc
+        if self._last_measurement is None:
+            # A well-formed request must always be answered, otherwise "no
+            # measurement yet" is indistinguishable from a silent link and the
+            # master records a false communication fault for a healthy node.
+            # The explicit "no readings available" indication carries the
+            # node's current state with an empty availability mask and no
+            # record identity; missing readings never become valid zeros.
+            return self._respond(frame, MessageType.MEASUREMENT_RESPONSE, {
+                "record_sequence": 0,
+                "timestamp_ticks": self.clock.ticks,
+                "time_sync_state": self.time.sync_state,
+                "available_mask": 0,
+                "voltage_mv": 0,
+                "current_ma": 0,
+                "power_mw": 0,
+                "energy_mwh": 0,
+                "light_level": 0,
+                "effective_mode": self.control.effective_mode,
+                "commanded_state": _commanded_state(self.control),
+                "switching_feedback": LampState.UNKNOWN,
+                "actual_state": LampState.UNKNOWN,
+                "sensor_status": SensorStatus.VALID,
+                "communication_status": self._comm_status,
+                "controller_status": ControllerStatus.NORMAL,
+            })
         m = self._last_measurement
         record_sequence = 0
         for record in self.storage.pending_upload:
@@ -613,7 +641,17 @@ class LampNode(BusEndpoint):
     def _handle_fault_report_request(self, frame: Frame) -> Optional[Frame]:
         active = self.faults.active_faults
         if not active:
-            return None
+            # "No active fault" is a report in its own right: the pull is
+            # answered so that silence keeps its only meaning, a failed link.
+            return self._respond(frame, MessageType.FAULT_REPORT, {
+                "fault_id": "",
+                "fault_type": FaultType.UNKNOWN,
+                "diagnostic_classification": DiagnosticClassification.NORMAL,
+                "fault_state": FaultState.NORMAL,
+                "notification_state": NotificationState.NOT_REQUIRED,
+                "severity": FaultSeverity.INFO,
+                "confirmation_count": 0,
+            })
         fault = active[0]
         payload = {
             "fault_id": fault.fault_id,
@@ -634,7 +672,9 @@ class LampNode(BusEndpoint):
             self._reported_events[confirmed] = True
         pending = [e for e in self.events if not self._reported_events.get(e.event_id)]
         if not pending:
-            return None
+            # Explicit "nothing pending" indication (event identity zero); the
+            # pull is answered so an idle node is not mistaken for a dead link.
+            return self._respond(frame, MessageType.EVENT_REPORT, {"event_id": 0})
         event = pending[0]
         self._sent_events.add(event.event_id)
         payload = {

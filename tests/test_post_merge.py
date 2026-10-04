@@ -866,3 +866,103 @@ def test_group_configuration_rejects_invalid_numeric_types(name, value):
     from sslv1.nodes.group_controller import GroupControllerConfig
     with pytest.raises(ConfigurationError):
         GroupControllerConfig(**{name: value}).validated()
+
+
+# --------------------------------------------------------------------------
+# Phase 14 regressions: pull semantics and live-only readings (production
+# defect fixes found by the fault-injection scenarios).
+# --------------------------------------------------------------------------
+def test_empty_measurement_pull_is_answered_and_buffers_no_record(group_controller, lamp_node):
+    """A node with nothing to report must still be a healthy exchange.
+
+    Regression: an unanswered validated pull used to exhaust the retry budget
+    and mark a healthy node ``COMM_FAULT``. The explicit empty indication
+    proves the link without inventing a stored measurement.
+    """
+    gc, node = group_controller, lamp_node
+    gc.register_node(node.lamp_id, node.bus_address)
+    registration = gc.registration_for(node.lamp_id)
+    assert registration.last_measurement is None
+
+    for _ in range(3):
+        gc.poll(MessageType.MEASUREMENT_REQUEST)
+        pump(gc, node)
+
+    assert registration.last_poll_success is True
+    assert registration.awaiting_response is False
+    assert registration.comm.state is CommState.COMM_HEALTHY
+    assert registration.comm.consecutive_failures == 0
+    assert registration.last_measurement is None, "no reading may be invented"
+    assert [r for r in gc.storage.records if r.record_type is RecordType.MEASUREMENT] == []
+    assert registration.confirmed_record_sequence == 0
+
+    # A genuinely silent node is still detected: an empty answer is not silence.
+    gc.bus.set_silent(1, True)
+    try:
+        for _ in range(gc.config.poll_retry_count + 1):
+            gc.poll(MessageType.MEASUREMENT_REQUEST)
+            gc.clock.advance(gc.config.poll_timeout_ticks)
+            gc.service_timeouts()
+    finally:
+        gc.bus.set_silent(1, False)
+    assert registration.comm.state is CommState.COMM_FAULT
+
+    gc.poll(MessageType.MEASUREMENT_REQUEST)
+    pump(gc, node)
+    assert registration.comm.state is CommState.RECOVERY
+    assert registration.last_poll_success is True
+
+
+def test_empty_fault_and_event_pulls_are_answered_without_phantom_records(
+        group_controller, lamp_node):
+    """Pulling faults or events from an idle node cannot fail the link."""
+    gc, node = group_controller, lamp_node
+    gc.register_node(node.lamp_id, node.bus_address)
+    registration = gc.registration_for(node.lamp_id)
+
+    for _ in range(3):
+        gc.poll(MessageType.FAULT_REPORT)
+        pump(gc, node)
+    assert registration.comm.state is CommState.COMM_HEALTHY
+    assert registration.last_poll_success is True
+    assert [r for r in gc.storage.records if r.record_type is RecordType.FAULT] == []
+
+    # The only event a freshly started node has is its own NODE_STARTED; it is
+    # transferred and confirmed exactly once, and later polls are empty.
+    for _ in range(4):
+        gc.poll(MessageType.EVENT_REPORT)
+        pump(gc, node)
+    events = [r for r in gc.storage.records if r.record_type is RecordType.EVENT]
+    assert len(events) == 1
+    assert registration.confirmed_event_id == 1
+    assert registration.comm.state is CommState.COMM_HEALTHY
+    assert registration.last_poll_success is True
+
+
+def test_live_only_measurement_reply_does_not_duplicate_the_historical_record(pair):
+    """``record_sequence == 0`` is a live-only reading, never a new record.
+
+    Regression: every idle poll used to buffer the last measurement again, so
+    the group store and the upstream feed accumulated duplicate copies of the
+    same reading (``PR-STORAGE-008`` forbids duplicate upload of a record).
+    """
+    gc, node = pair
+    node.step(healthy_sources(), ticks=1000)
+    for _ in range(5):
+        gc.poll(MessageType.MEASUREMENT_REQUEST)
+        pump(gc, node)
+
+    measurements = [r for r in gc.storage.records
+                    if r.record_type is RecordType.MEASUREMENT]
+    assert len(measurements) == 1
+    assert measurements[0].payload['timestamp_ticks'] == 1000
+    registration = gc.registration_for(node.lamp_id)
+    assert registration.received_record_sequences == {1}
+    assert registration.confirmed_record_sequence == 1
+    assert len(node.storage.retained) == 1
+
+    # The live view still refreshes from the record-less replies.
+    assert registration.last_measurement is not None
+    assert registration.last_measurement.voltage == 230.0
+    assert registration.last_measurement.current == 0.45
+    assert registration.comm.state is CommState.COMM_HEALTHY

@@ -47,6 +47,11 @@ remaining model/integration scope rather than masking it with passing tests.
 Reproduce with `python3 -m pytest` from the repository root. The suite is
 deterministic: no wall-clock time, no randomness, no hardware access.
 
+Phase 14 adds deterministic fault-injection evidence (section 7). It adds
+evidence to requirements that are already `VERIFIED` or `PARTIAL`; it does not
+change any status in this table, and it does not verify anything at the
+physical level.
+
 ## 5. Traceability matrix
 
 ### 5.1 Lighting control (Lamp Node)
@@ -212,6 +217,42 @@ over-claim. Each is a physical or external-dependency property.
 | `PR-TIME-005` | Physical RTC accuracy and backup duration need real hardware and time; the digital model only proves the state machine. |
 | `PR-SECURITY-004` | Tamper detection needs a real tamper source; only the event vocabulary exists. |
 | `PR-SECURITY-005` | Security validation (key management, authentication strength) is explicitly out of the digital prototype's scope. |
+
+## 7. Phase 14 fault-injection evidence
+
+`tests/fault_injection.py` is a deterministic fault-injection harness (logical
+clock, in-memory bus, injected readings, link and storage faults). The scenarios
+are in `tests/test_fault_injection.py`; the harness and the scenarios are test
+support, not production code, and they validate the digital model only.
+
+| Area | Representative tests (`test_fault_injection.py` unless stated) | Requirements exercised |
+| --- | --- | --- |
+| 1. Lighting and sensor faults | `test_sensor_becoming_invalid_while_on_keeps_the_lamp_on_and_confirms`, `test_sensor_recovery_before_confirmation_leaves_no_stale_fault`, `test_threshold_oscillation_does_not_create_one_alert_per_crossing` | `PR-LIGHT-001`..`PR-LIGHT-005`, `PR-DIAG-005`, `PR-DIAG-006`, `PR-FAULT-005`, `PR-FAULT-006` |
+| 2. Electrical measurement faults | `test_under_current_needs_consecutive_evidence_to_confirm`, `test_intervening_normal_evidence_breaks_consecutive_confirmation`, `test_current_while_commanded_off_is_unexpected_current`, `test_original_and_latest_evidence_are_kept_distinct` | `PR-DIAG-001`..`PR-DIAG-004`, `PR-MEASURE-001`, `PR-MEASURE-004`, `PR-FAULT-005`, `PR-FAULT-011` |
+| 3. Switching-feedback faults | `test_commanded_state_is_never_confused_with_actual_state`, `test_feedback_on_while_commanded_off_is_not_a_silent_success`, `test_diagnostic_result_is_advisory_and_never_drives_the_switch` | `PR-CONTROL-002`, `PR-DIAG-002`, `PR-DIAG-003` |
+| 4. Communication faults | `test_dropped_request_is_retried_only_within_the_absolute_deadline`, `test_corrupted_response_is_excluded_counted_and_recovered`, `test_duplicate_and_stale_frames_do_not_corrupt_receiver_state`, `test_sequence_wrap_keeps_new_traffic_valid_and_replay_detected` | `PR-COMM-003`, `PR-COMM-005`..`PR-COMM-009` |
+| 5. Remote-command faults | `test_remote_force_on_lifecycle_is_ordered_and_evidence_based`, `test_every_remote_subtype_is_verified_from_node_evidence`, `test_lost_ack_times_out_to_failed_and_a_late_ack_cannot_resurrect_it`, `test_unauthorized_remote_command_never_reaches_the_bus` | `PR-CONTROL-001`..`PR-CONTROL-003`, `PR-COMM-007`, `PR-SECURITY-001`..`PR-SECURITY-003` |
+| 6. Fault lifecycle | `test_confirmation_threshold_confirms_once_per_condition`, `test_recurrence_after_closure_creates_a_linked_new_record`, `test_illegal_fault_transitions_do_not_mutate_state`, `test_failed_verification_reactivates_the_fault` | `PR-FAULT-003`..`PR-FAULT-011` |
+| 7. Notification faults | `test_repeated_observations_do_not_reset_notification_timers`, `test_reminder_is_issued_once_and_does_not_spam`, `test_escalation_happens_at_the_configured_deadline_not_before`, `test_delivery_failure_follows_the_configured_retry_path` | `PR-FAULT-007`..`PR-FAULT-009`, `PR-FAULT-013` |
+| 8. Storage faults | `test_corrupt_record_is_never_confirmed_or_uploaded_and_recovery_discards_it`, `test_no_silent_loss_across_a_power_loss_cycle`, `test_unauthorized_deletion_is_rejected_audited_and_deletes_nothing` | `PR-STORAGE-001`..`PR-STORAGE-010` |
+| 9. Time faults | `test_offline_node_never_claims_synchronized_time`, `test_delayed_sync_never_moves_time_backwards_or_fakes_sync`, `test_offline_records_keep_their_original_time_validity_after_later_sync` | `PR-TIME-001`..`PR-TIME-004` (`PR-TIME-005` stays `PLANNED`: physical RTC behaviour is not modelled) |
+| 10. Multi-node containment | `test_sixteen_node_group_with_five_independent_failures_contains_them`, `test_scenario_h_sixteen_nodes_multiple_faults_leave_the_rest_running` | `PR-SCALABILITY-001`, `PR-SCALABILITY-002`, `PR-COMM-009` |
+| 11. Store-and-forward | `test_upstream_outage_buffers_without_loss_or_local_impact`, `test_lost_confirmation_during_recovery_never_loses_or_duplicates_history`, `test_event_records_are_forwarded_and_confirmed_without_duplication` | `PR-STORAGE-008`, `PR-STORAGE-009`, `PR-OFFLINE-001`..`PR-OFFLINE-005` |
+| 12. Scenarios A-J | `test_scenario_a_...` .. `test_scenario_j_...` (ten tests) | Cross-cutting: `PR-FAULT`, `PR-COMM`, `PR-CONTROL`, `PR-STORAGE`, `PR-TIME`, `PR-CONFIG`, `PR-OFFLINE`, `PR-SCALABILITY` |
+
+`PR-SECURITY-004` (tamper detection) declares a Phase 14 digital test as its
+verification method, but the digital model has no tamper source: only the
+`TAMPER` fault category and the `TAMPER_INDICATION` event exist. The requirement
+therefore stays `PLANNED` and is not claimed as exercised by this phase.
+
+Focused regressions for the defects this phase found are kept out of the
+fault-injection layer:
+
+| Defect | Requirement | Focused regression test |
+| --- | --- | --- |
+| A validated pull left unanswered made a healthy node look like a failed link (`COMM_FAULT`) | `PR-COMM-007`, `PR-COMM-008` | `tests/test_post_merge.py::test_empty_measurement_pull_is_answered_and_buffers_no_record`, `::test_empty_fault_and_event_pulls_are_answered_without_phantom_records` |
+| A live-only measurement reply (`record_sequence == 0`) was buffered again as a historical record, so idle polls duplicated history and the upload | `PR-STORAGE-008` (no duplicate upload of a record) | `tests/test_post_merge.py::test_live_only_measurement_reply_does_not_duplicate_the_historical_record` |
+| The normal "lamp commanded off in bright ambient" observation was confirmed as a managed `ENVIRONMENTAL` fault and notified | `PR-DIAG-002`, `PR-FAULT-001`, `PR-FAULT-005` | `tests/test_fault.py::test_environmental_observation_never_becomes_a_confirmed_fault` |
 
 ## Corrective evidence and scoped limitations
 

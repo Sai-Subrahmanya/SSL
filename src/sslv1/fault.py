@@ -139,6 +139,18 @@ class ConfirmationPolicy:
             window_ticks=config.fault_confirmation_window_ticks,
         )
 
+#: Classifications that describe an external/environmental observation rather
+#: than a lamp, node or communication fault. ``docs/04`` section 4 defines the
+#: ``ENVIRONMENTAL`` category as "environmental condition outside expected
+#: range", while assumption ``A-21`` leaves the triggering environmental inputs
+#: undefined. A diagnostic result still carries this classification, but the
+#: fault engine must not turn it into a managed fault: otherwise the normal
+#: "lamp commanded off in bright ambient" state would raise a confirmed fault
+#: and a notification every daylight period.
+_OBSERVATION_ONLY_CLASSIFICATIONS = frozenset({
+    DiagnosticClassification.ENVIRONMENTAL_OR_EXTERNAL,
+})
+
 #: Maps a diagnostic classification to the severity used when a fault is raised.
 _SEVERITY_BY_CLASSIFICATION: Dict[DiagnosticClassification, FaultSeverity] = {
     DiagnosticClassification.NORMAL: FaultSeverity.INFO,
@@ -205,7 +217,11 @@ class FaultEngine:
         """
         self._event_actor = None
         self._event_ticks = ticks
-        if result.is_normal:
+        if result.is_normal or result.classification in _OBSERVATION_ONLY_CLASSIFICATIONS:
+            # An observation-only classification is reported through the
+            # diagnostic result but raises no fault, no confirmation and no
+            # notification. Any unconfirmed suspicion for this lamp is treated
+            # as cleared, exactly as for a normal observation.
             return self._observe_normal(lamp_id, ticks)
 
         category = result.fault_category or FaultType.UNKNOWN

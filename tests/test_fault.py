@@ -682,3 +682,39 @@ def test_notify_from_any_waiting_state_does_not_crash(lamp_node):
             lamp_node.notifications.notify(fault, ticks=5000, delivered=delivered)
             lamp_node.notifications.tick(fault, ticks=5000)
     assert lamp_node.control.lamp_is_on is True
+
+
+def test_environmental_observation_never_becomes_a_confirmed_fault(lamp_node):
+    """The normal bright-ambient OFF state raises no managed fault.
+
+    Regression (Phase 14): the "lamp commanded off, no current, bright
+    ambient" observation is classified ``ENVIRONMENTAL_OR_EXTERNAL`` — an
+    external-illumination observation, explicitly *not* a lamp fault — but the
+    fault engine used to confirm it after the configured observation count and
+    notify, so every daylight period produced a confirmed fault and a
+    notification. ``docs/04`` section 4 defines the ``ENVIRONMENTAL`` category
+    as a condition *outside* the expected range and assumption ``A-21`` leaves
+    its triggering environmental inputs open, so the observation is retained in
+    the diagnostic result and raises no fault.
+    """
+    from sslv1.enums import EventType
+
+    lamp_node.step(healthy_sources(light_level=10.0), ticks=1000)
+    assert lamp_node.control.lamp_is_on is True
+    bright_off = healthy_sources(light_level=900.0, switching_feedback=LampState.OFF,
+                                 current=0.0, power=0.0)
+    for index in range(6):
+        lamp_node.step(bright_off, ticks=2000 + index * 1000)
+
+    assert lamp_node.control.lamp_is_on is False
+    assert lamp_node.faults.faults == ()
+    assert lamp_node.faults.active_faults == ()
+    assert lamp_node._last_diagnostic.classification is \
+        DiagnosticClassification.ENVIRONMENTAL_OR_EXTERNAL
+    lifecycle_events = [e for e in lamp_node.events
+                        if e.event_type in (EventType.FAULT_CONFIRMED,
+                                            EventType.FAULT_NOTIFIED,
+                                            EventType.FAULT_SUSPECTED)]
+    assert lifecycle_events == []
+    assert lamp_node.notifications._last_notified == {}
+    assert lamp_node.control.lamp_is_on is False

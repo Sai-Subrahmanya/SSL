@@ -147,6 +147,8 @@ regression coverage, the principal classification is listed below.
 ## 5. Validation results
 
 Results below were obtained from the full working branch, not copied from the prior report.
+They describe the corrective pass; Phase 14 additions and results are reported in
+section 9.
 
 | Check | Result |
 | --- | --- |
@@ -171,7 +173,7 @@ ACK alone is not verification; inconsistent or expired ACK does not complete a
 command; corruption cannot enter upstream retained history. A focused rerun of
 56 authorization/corruption/forged-ACK/deadline/numeric-boundary cases also passed.
 AST checks confirmed the full 73-function new-test inventory, no deleted existing
-test functions and coverage of every changed existing test in section 9. All 88
+test functions and coverage of every changed existing test in section 10. All 88
 requirement statuses were programmatically reconciled between documents.
 
 ## 6. Final review method
@@ -226,7 +228,58 @@ The sequence remains requirements → architecture → design → implementation
 test → audit → validation → Minewing engineering review → physical prototype →
 real-world validation. The corrective pass does not skip those gates.
 
-## 9. Test change inventory
+## 9. Phase 14 - deterministic fault injection (2026-10-04)
+
+Phase 14 was executed on the corrected branch after the corrective pass above.
+It adds no product requirements: it attacks the existing digital model with
+controlled faults and checks behaviour against the existing requirement set.
+
+| Item | Value |
+| --- | --- |
+| Harness | `tests/fault_injection.py` - `GroupSim` (1-16 nodes), injectable upstream link, injected readings, bus/storage/time hooks, injection counters |
+| Scenarios | `tests/test_fault_injection.py` - 12 fault categories plus the ten A-J end-to-end scenarios |
+| Coverage | sensor/light, electrical, switching feedback, communication, remote commands, fault lifecycle, notification, storage and store-and-forward, time, 16-node containment |
+| Full suite | 546 passed, 0 failed (438 before Phase 14) |
+| Phase 14 module | 104 passed |
+| Determinism | logical clock only; no wall clock, randomness, network or hardware access; repeated runs produce identical event sequences |
+
+### 9.1 Defects found and fixed
+
+Each defect was fixed in the production model with a focused regression test;
+none is hidden inside the fault-injection layer.
+
+| # | Defect | Effect | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| 1 | A validated pull request for which there is nothing to report was left unanswered (`MEASUREMENT_REQUEST`, `FAULT_REPORT_REQUEST`, `EVENT_REPORT_REQUEST`) | A healthy idle node exhausted `poll_retry_count` and was escalated to `COMM_FAULT`; a zero-length event body was also indistinguishable from a malformed one | The node now answers explicitly with an empty result set; the Group Controller skips the explicit-empty answer instead of buffering a phantom record; wire event id 0 maps to an empty body | `tests/test_post_merge.py::test_empty_measurement_pull_is_answered_and_buffers_no_record`, `::test_empty_fault_and_event_pulls_are_answered_without_phantom_records` |
+| 2 | A live-only measurement reply (`record_sequence == 0`) was buffered again as a new historical record | Every idle poll duplicated the last measurement, growing the upload and the upstream history without bound | The Group Controller refreshes the live view and returns early for live-only replies; only stored-record identities enter the buffer | `tests/test_post_merge.py::test_live_only_measurement_reply_does_not_duplicate_the_historical_record` |
+| 3 | The normal "lamp commanded off, no current, bright ambient" observation was confirmed as a managed `ENVIRONMENTAL` fault and notified after the observation count | Every daylight period produced a confirmed fault and a notification | `ENVIRONMENTAL_OR_EXTERNAL` is treated as an observation-only classification by the fault engine (no fault, no confirmation, no notification); the diagnostic result is still reported and any unconfirmed suspicion still clears | `tests/test_fault.py::test_environmental_observation_never_becomes_a_confirmed_fault` |
+
+The three regressions were mutation-checked: reverting the production change
+makes the corresponding regression test fail.
+
+### 9.2 Bounded behaviour and open questions
+
+- Storage-full (A-09), retention duration (A-10) and numeric limits remain
+  open; the injected scenarios pin the currently implemented bounded
+  behaviour only (explicit `STORAGE_FULL` event, typed `StorageFullError`,
+  retired capacity after authorized deletion).
+- Two open engineering questions surfaced (see
+  `docs/09_digital_prototype_scope.md`, "Phase 14 fault-injection boundaries"):
+  command verification versus measurement interval, and the resting state of a
+  notification that exhausted its delivery retries. Both are pinned by tests
+  and neither changes a requirement.
+- No physical claim is introduced: the injected faults are modelled conditions
+  and the demonstrated timing is logical time.
+
+### 9.3 Traceability
+
+Every Phase 14 area maps to existing requirements in
+`docs/requirements_traceability.md` section 7. No requirement status changed:
+the matrix remains 78 `VERIFIED`, 7 `PARTIAL`, 3 `PLANNED`.
+
+---
+
+## 10. Test change inventory
 
 The existing test bodies changed below retain their original final behavior
 assertions. Changes supply measured evidence, authenticated Actors, valid

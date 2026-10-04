@@ -163,6 +163,50 @@ requirement is complete or that the model is physical PCB firmware.
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
 
+## Phase 14 fault-injection boundaries
+
+Phase 14 is a **deterministic fault-injection layer over the digital model**,
+not hardware validation. `tests/fault_injection.py` builds simulated lamp nodes
+and a Group Controller on the in-memory bus and injects readings, link faults,
+storage faults and time conditions; `tests/test_fault_injection.py` contains
+the scenarios (12 fault categories plus the A-J end-to-end scenarios). The
+harness uses the documented hooks only and never bypasses the domain layer, and
+the scenarios assert the state before the injection, the immediate response,
+retry/deadline behaviour, the eventual state, the audit evidence and the fact
+that unaffected nodes stayed unaffected.
+
+What the layer demonstrates:
+
+- injected sensor, electrical, switching-feedback, communication, command,
+  fault-lifecycle, notification, storage and time faults produce the documented
+  states, retries, deadlines, containment and recovery, with audit evidence;
+- a corrupt or unconfirmed record is never silently lost or duplicated, and
+  delivery, execution and verification remain distinct stages;
+- one node's fault does not propagate to healthy nodes in a 16-node group.
+
+What it does not demonstrate (unchanged by this phase): electrical safety,
+mains wiring, isolation/creepage/clearance, EMC/RF, surge/ESD, relay life or
+inrush, thermal/enclosure/IP properties, metering accuracy, physical RTC
+behaviour, certification or production readiness. Injected faults are modelled
+conditions, and their timing is logical time, not hardware timing.
+
+Two open engineering questions surfaced while injecting faults; neither is
+answered here and neither is a product requirement change:
+
+1. A FORCE_ON/FORCE_OFF command whose execution is confirmed can only reach
+   `ACTUAL_STATE_VERIFIED` from a *fresh* measurement. When the configured
+   measurement interval is longer than the absolute command deadline, the
+   command record ends `FAILED` although the node executed it. The correct
+   relationship between those parameters remains open (no numeric value is
+   frozen); the current bounded behaviour is pinned by a test.
+2. A notification that has entered `DELIVERY_FAILED` after the configured
+   retry limit rests there: a later successful delivery is not modelled as
+   recovering it. Whether an operator-triggered resend path is required
+   remains open; the current resting behaviour and its audit event are pinned
+   by a test.
+
+---
+
 ## Remaining model boundaries after the corrective pass
 
 Authentication remains an asserted Actor flag/role on a trusted in-memory bus,

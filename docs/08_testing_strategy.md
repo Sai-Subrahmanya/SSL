@@ -86,6 +86,11 @@ The digital prototype shall support deterministic injection of at least:
 | Unacknowledged notification | Validate escalation and no-auto-shutdown (`PR-FAULT-008`, `PR-FAULT-009`). |
 | Failed verification | Validate return to active fault state (`PR-FAULT-011`). |
 
+The matrix above is implemented for the digital model in
+`tests/test_fault_injection.py` (Phase 14), together with injected link,
+command, fault-lifecycle, notification, storage, time and multi-node failures.
+Section 7.1 records the harness and the scope of that evidence.
+
 ---
 
 ## 7. Phase-to-test mapping
@@ -113,6 +118,27 @@ The digital prototype shall support deterministic injection of at least:
 
 ---
 
+## 7.1 Phase 14 fault-injection evidence
+
+Phase 14 is implemented as a deterministic fault-injection layer over the
+digital model, not as hardware testing:
+
+| Item | Value |
+| --- | --- |
+| Harness | `tests/fault_injection.py` (`GroupSim`, injected readings, bus/storage/time hooks) |
+| Scenarios | `tests/test_fault_injection.py` (12 fault categories and scenarios A-J) |
+| Focused defect regressions | `tests/test_post_merge.py` (empty pull, live-only reading), `tests/test_fault.py` (environmental observation) |
+| Determinism | Logical clock only; no wall-clock time, randomness, network or hardware access |
+| Scope claim | Validates modelled behaviour only; no electrical-safety, EMC/RF, thermal, enclosure or physical-RTC claim |
+
+Every scenario asserts the state before the injection, the immediate response,
+the retry/deadline behaviour, the eventual state, the audit evidence and that
+unaffected components stayed unaffected. Faults are injected through the
+documented hooks (readings, bus silence/corruption, storage hooks, time model);
+the harness does not bypass the domain layer.
+
+---
+
 ## 8. Evidence requirements
 
 Each phase shall produce:
@@ -124,7 +150,7 @@ Each phase shall produce:
 | Deviation record | Any requirement not met, with reason and disposition. |
 | Review note | Reviewer comments, recorded under `docs/review/`. |
 
-### 8.1 Evidence produced for Phases 1-13
+### 8.1 Evidence produced for Phases 1-14
 
 The deterministic suite now lives in [`tests/`](../tests/) and is run with
 `python3 -m pytest` from the repository root. It uses only Python 3.9+ and
@@ -144,6 +170,9 @@ pytest.
 | `tests/test_comm.py` | Frame structure, CRC, message types, payload codecs, bus behaviour, communication state machine. |
 | `tests/test_group_controller.py` | Registration, polling, multi-node isolation, communication failure/retry/recovery, time distribution, store-and-forward. |
 | `tests/test_scenarios.py` | 50 numbered end-to-end scenarios cross-referenced to requirements. |
+| `tests/test_post_merge.py` | Corrective regression suite (authorization, fresh verification, deadlines, corruption, retention) and the Phase 14 defect regressions. |
+| `tests/fault_injection.py` | Phase 14 deterministic fault-injection harness (`GroupSim`, injected readings, link/storage/time hooks); test support, not production code. |
+| `tests/test_fault_injection.py` | Phase 14 injected-fault scenarios: 12 fault categories and the A-J end-to-end scenarios. |
 
 Every `VERIFIED` entry in
 [requirements_traceability.md](requirements_traceability.md) names the module
@@ -215,9 +244,9 @@ logic only**. This is stated explicitly in the traceability record.
 | Item | Status |
 | --- | --- |
 | Test strategy defined | Yes |
-| Fault injection matrix defined | Yes (candidate list) |
-| Test identifiers / tooling | **Not defined** |
-| Tests implemented | **None** (intentionally - Phase 0 only) |
+| Fault injection matrix defined | Yes |
+| Test identifiers / tooling | pytest; deterministic logical clock, no wall clock or randomness |
+| Tests implemented | Yes - `tests/` covers Phases 1-14; see section 8.1 |
 
 ---
 
