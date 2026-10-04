@@ -6,8 +6,10 @@ This document defines the **future data model** for Smart Street Light V1.
 
 It is a design artefact derived from the requirements in
 [02_product_requirements.md](02_product_requirements.md). It defines the
-*information* the system must carry; it does not define serialization,
-field widths, or storage layout (those belong to Phase 8 design).
+*information* the system must carry; it does not define serialization field
+widths or the physical storage layout (those belong to the hardware
+architecture / storage-medium phase, see
+[10_hardware_reference.md](10_hardware_reference.md)).
 
 Field types below are **indicative**. They describe the information content,
 not a concrete implementation type.

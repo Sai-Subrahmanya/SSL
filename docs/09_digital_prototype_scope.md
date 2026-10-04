@@ -259,3 +259,16 @@ requirement whose status was stronger than its evidence, no duplicated source
 of truth and no new limitation: the boundaries listed above are the complete
 set, and the seven requirements whose verification method names Phase 17 are
 now exercised by `tests/test_system_validation.py` rather than assumed.
+
+## Phase 18 engineering-audit boundary
+
+The Phase 18 engineering audit ([15_engineering_audit.md](15_engineering_audit.md))
+re-checked this scope statement and changed nothing in it. The verdict is
+**PASS WITH CONDITIONS**: the digital architecture is mature enough for
+preliminary engineering, while the conditions are physical or partner inputs -
+above all the undecided mains safety class, protective-earth treatment and
+isolation boundary (`A-30`), the hardware inputs listed in
+[10_hardware_reference.md](10_hardware_reference.md) sections 4 to 8, and the
+proposed fault-set reporting contract (`D-044`). The audit added no physical
+claim, removed no limitation and did not close any `PARTIAL` or `PLANNED`
+requirement.

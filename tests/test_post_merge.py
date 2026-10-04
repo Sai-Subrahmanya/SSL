@@ -455,11 +455,20 @@ def test_nonfinite_or_nonnumeric_config_rejected(lamp_identity, value):
 
 
 def test_negative_or_nonfinite_energy_samples_do_not_decrement(lamp_node):
+    """Bad power samples are excluded from the accumulator, not subtracted.
+
+    The assertion is on the value the node publishes (``last_measurement``),
+    which is what the rest of the system consumes; the internal accumulator is
+    not the observable interface.
+    """
     lamp_node.step(healthy_sources())
-    energy = lamp_node._energy
+    published = lamp_node.last_measurement.energy
     for power in (-1, float('nan'), float('inf')):
         lamp_node.step(healthy_sources(power=power))
-        assert lamp_node._energy == energy
+        assert lamp_node.last_measurement.energy == published
+    # A valid sample after the bad ones still accumulates.
+    lamp_node.step(healthy_sources(power=100.0))
+    assert lamp_node.last_measurement.energy > published
 
 
 def test_missing_current_cannot_verify_off(lamp_node, operator):

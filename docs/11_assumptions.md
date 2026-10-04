@@ -107,7 +107,7 @@ requirements when they are resolved.
 | Assumption | Outside the configured time window, the lamp is OFF by default. |
 | Reason | Common municipal practice of restricting operation to defined windows. |
 | Status | `Open` |
-| Effect if changed | Lighting behaviour, energy results and Phase 3 test expectations change. Must be resolved before Phase 3 design is frozen. |
+| Effect if changed | Lighting behaviour, energy results and the Phase 3 control tests change. Still `Open`: the digital model applies the assumed default (out-of-window = OFF) as configuration, so the operating policy must be confirmed with the site before firmware is frozen. |
 | Related requirements | `PR-LIGHT-002` |
 
 ---
@@ -131,7 +131,7 @@ requirements when they are resolved.
 | Assumption | Storage-full behaviour has not been selected. Candidates: stop recording, overwrite oldest, raise condition only. |
 | Reason | The choice has evidence-retention consequences that require an explicit decision. |
 | Status | `Open` |
-| Effect if changed | Record retention, completeness of the event history and diagnostic value change. Must be resolved before Phase 8 design is frozen. |
+| Effect if changed | Record retention, completeness of the event history and diagnostic value change. Still `Open`: the model raises a condition without overwriting history, and the policy must be resolved before the physical storage medium and its self-protection behaviour are frozen. |
 | Related requirements | `PR-STORAGE-006`, `PR-STORAGE-005` |
 
 ---
@@ -376,28 +376,44 @@ requirements when they are resolved.
 | Effect if changed | Storage sizing and the storage-full decision are affected; the retention abstraction is unaffected. |
 | Related requirements | `PR-STORAGE-005`, `PR-STORAGE-009` |
 
+### A-30 - Mains safety class, protective-earth treatment and isolation boundary
+
+| Field | Value |
+| --- | --- |
+| Assumption | The mains-side design provides a defined isolation boundary between the mains / switched-lamp side and the low-voltage control and communication side. The **safety class** (Class I with protective earth, or Class II double-insulated), the protective-earth treatment and the exact isolation boundary are **not decided**. |
+| Reason | The requirements fix the input and output voltages (`A-02`, `A-03`) and the switching function, but the product-safety architecture follows from the enclosure and installation concept and must be decided with a qualified hardware/safety engineer. Distributor documentation lists the candidate isolated AC/DC modules as Class II components; that must be confirmed from the official datasheets and does not by itself determine the product class. |
+| Status | `Open` |
+| Effect if changed | Determines creepage/clearance, whether a protective-earth terminal and bonding exist, the isolation barrier and its rated voltage, the connector and service-interface requirements, the relay contact and inrush rating, and the enclosure/mounting concept. It gates schematic capture and must be settled before PCB layout; it is the first question a hardware reviewer will ask. |
+| Related requirements | `PR-MEASURE-001`, `PR-LIGHT-001`, `PR-COMM-001`; hardware design inputs in [10_hardware_reference.md](10_hardware_reference.md) section 6 |
+| Settled by | A product-safety decision taken with the enclosure/installation concept and confirmed by a qualified hardware/safety engineer - not by digital work. |
+
+---
+
 ## 4. Summary
 
 | Status | Count | Identifiers |
 | --- | --- | --- |
 | `Target` | 3 | A-01, A-02, A-03 |
-| `Open` | 18 | A-05, A-07, A-08, A-09, A-10, A-11, A-12, A-13, A-14, A-15, A-16, A-17, A-18, A-19, A-20, A-21, A-26, A-29 |
+| `Open` | 19 | A-05, A-07, A-08, A-09, A-10, A-11, A-12, A-13, A-14, A-15, A-16, A-17, A-18, A-19, A-20, A-21, A-26, A-29, A-30 |
 | `Accepted` | 8 | A-04, A-06, A-22, A-23, A-24, A-25, A-27, A-28 |
-| **Total** | **29** | A-01 .. A-29 |
+| **Total** | **30** | A-01 .. A-30 |
 
-The `Open` assumptions are the ones that must be resolved before the phase
-they block:
+The digital phases (1-18) are complete. The `Open` assumptions therefore no
+longer block a phase that has already run; they block the **next** engineering
+stage - schematic/PCB design, the prototype build or the site/product
+decisions. The Phase 18 audit re-mapped them
+([15_engineering_audit.md](15_engineering_audit.md) section 21):
 
-| Blocking phase | Open assumptions |
+| Blocks now | Open assumptions |
 | --- | --- |
-| Phase 3 (lighting control) | A-07, A-08 |
-| Phase 6 (fault lifecycle) | A-11, A-12 |
-| Phase 8 (storage) | A-09, A-10, A-16 |
-| Phase 9 (RS-485) | A-05, A-17 |
-| Phase 10 (group controller) | A-13, A-14 |
-| Phase 12 (configuration) | A-19, A-20 |
-| Physical validation phase | A-26 |
-| Retention design (Phase 8 / Phase 12) | A-29 |
+| Schematic / PCB design inputs | A-05 (baud rate), A-09, A-10, A-16, A-29 (storage full, retention, capacity), A-13, A-14, A-15 (upstream link and regional variant), A-17, A-18 (address assignment, switching feedback), A-19, A-27 (security mechanism), A-30 (safety class and isolation boundary) |
+| Prototype / firmware behaviour | A-07, A-08 (lighting defaults), A-11, A-12 (severity, clear policy), A-20 (identifier assignment by the deploying organization) |
+| Physical validation campaign | A-26 (RTC backup duration) |
+| Not blocking preliminary engineering (site or commercial input) | A-21 (environmental sensor set) |
+
+No assumption is closed by digital work alone; the audit records for each one
+why it is open, what would settle it and whether it can remain open during
+preliminary engineering.
 
 ---
 
@@ -407,6 +423,7 @@ they block:
 | --- | --- |
 | 2026-09-25 | Initial assumptions register created (25 assumptions). |
 | 2026-09-25 | A-18 reworded to the `switching_feedback` abstraction; A-26 to A-29 added (29 assumptions). |
+| 2026-10-04 | Phase 18 engineering audit: A-30 (mains safety class / PE / isolation boundary) added after the audit found no record of an undecided product-safety class; the blocking-phase table re-mapped from completed digital phases to schematic/PCB/prototype/site inputs. No existing assumption status changed. |
 
 ---
 
@@ -417,9 +434,17 @@ they block:
 - [09_digital_prototype_scope.md](09_digital_prototype_scope.md)
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
 - [requirements_traceability.md](requirements_traceability.md)
 
 ## Corrective audit disposition (2026-09-26)
+
+Phase 18 (2026-10-04) re-checked the six assumptions under review and found
+no basis for closing any of them by digital work. A-30 was added because the
+audit found that the mains safety class and the isolation boundary were not
+recorded anywhere: the earlier documents deferred "mains safety" to physical
+validation without recording that the *product-safety decision itself* is
+still open and gates schematic capture.
 
 A-09 and A-10 remain open: deterministic capacity failure is not a selected
 storage-full policy or retention duration. A-18 remains an abstract diagnostic

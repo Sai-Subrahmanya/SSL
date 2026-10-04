@@ -247,8 +247,8 @@ delivered or being explicitly reported as lost/corrupt
 
 ## 11. Storage sizing considerations (indicative, not requirements)
 
-The following considerations inform the Phase 8 design. They are **not**
-requirements and no capacity figure is committed here:
+The following considerations inform the storage-medium decision. They are
+**not** requirements and no capacity figure is committed here:
 
 - number of nodes per group (~16 initial target),
 - measurement interval and reporting interval (configurable),
@@ -256,8 +256,11 @@ requirements and no capacity figure is committed here:
 - target retention duration,
 - upload cadence.
 
-Storage sizing is deferred to Phase 8, when intervals and record layout are
-designed.
+Storage sizing is deferred to the hardware architecture phase, when the
+storage medium, the record layout and the intervals are fixed
+([10_hardware_reference.md](10_hardware_reference.md)). Record layout is
+already defined at information level in
+[03_data_model.md](03_data_model.md).
 
 ---
 
@@ -285,7 +288,7 @@ designed.
 | Storage architecture | Defined |
 | Record envelope | Defined (field level) |
 | Commit and corruption semantics | Defined |
-| Physical layout, wear levelling, capacity | **Not defined** - Phase 8 |
+| Physical layout, wear levelling, capacity | **Not defined** - hardware architecture / storage-medium phase |
 | Implementation | Logical RecordStore and event history implemented; no physical storage driver |
 
 ---
@@ -300,6 +303,7 @@ designed.
 - [08_testing_strategy.md](08_testing_strategy.md)
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
 
 ## Corrective digital storage semantics
 

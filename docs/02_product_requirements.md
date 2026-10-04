@@ -352,6 +352,13 @@ operation.
 Uncontrolled post-reset behaviour can leave lamps in an unknown state and
 makes field faults undiagnosable.
 
+**Requirement / design boundary.**
+The digital prototype demonstrates the modelled restart path: the state that
+is restored, the event that is reported and the resumption of operation. Real
+watchdog behaviour, brown-out behaviour, relay fail-state and the physical
+restart time are hardware items (see
+[10_hardware_reference.md](10_hardware_reference.md) section 6).
+
 ---
 
 #### PR-CONTROL-006 - No automatic shutdown for non-protective conditions
@@ -1042,6 +1049,14 @@ power loss occurring at any point.
 **Rationale.**
 Street-light nodes lose power routinely; partial records must never be
 mistaken for valid data.
+
+**Requirement / design boundary.**
+The digital prototype demonstrates the commit-marker protocol, detection of an
+incomplete record and recovery from a simulated power loss at every point. It
+does not establish real flash programming behaviour, write timing, wear or the
+power-fail window of a physical device; those require the storage-medium
+selection and physical validation
+([10_hardware_reference.md](10_hardware_reference.md) sections 4 and 11).
 
 ---
 
@@ -1798,20 +1813,26 @@ principle.
 
 ---
 
-## 6. Requirements that cannot be verified digitally
+## 6. Digital versus physical verification of mixed requirements
 
-The following requirements are verified by **inspection** or by physical
-test and are not claimed as validated by the digital prototype:
+Some requirements combine a **modelled behaviour** that the digital prototype
+can demonstrate with a **physical property** that only hardware can establish.
+For those, `VERIFIED (digital prototype)` applies to the modelled part only -
+the physical part is never claimed. This table is the authoritative split, and
+it matches the traceability matrix and
+[15_engineering_audit.md](15_engineering_audit.md) section 24.
 
-| Requirement | Reason |
-| --- | --- |
-| `PR-MEASURE-005` | Documentation-level constraint on claims |
-| `PR-SECURITY-005` | Documentation-level constraint on claims |
-| `PR-CONTROL-005` | Physical restart behaviour is modelled, not measured |
-| `PR-STORAGE-003` | Power-loss safety is modelled, not physically tested |
-| `PR-TIME-001` | RTC behaviour is modelled, not physically tested |
+| Requirement | What the digital evidence covers | What remains physical |
+| --- | --- | --- |
+| `PR-MEASURE-005` | The claim constraint itself: the model carries no billing-grade field and no billing-grade accuracy statement | Any accuracy claim would require calibrated measurement on hardware |
+| `PR-CONTROL-005` | The modelled restart path restores a defined commanded state, reports the restart and resumes | Real watchdog/reset behaviour, relay fail-state and brown-out behaviour |
+| `PR-STORAGE-003` | The commit-marker protocol and recovery from an incomplete record, including a simulated power loss at every point | Real flash programming, wear, write timing and power-fail behaviour |
+| `PR-TIME-001` | Logical local timekeeping, validity, ordering and restart semantics | Physical RTC accuracy, backup retention and temperature behaviour (`PR-TIME-005`) |
+| `PR-SECURITY-005` | Nothing - the requirement is a documentation boundary | Any certification or inspection evidence would be required before such a claim |
 
-Modelled behaviour is **digital validation only**.
+Modelled behaviour is **digital validation only**. Requirement-specific
+boundary notes appear under the requirements themselves where the wording
+could otherwise be read as a physical claim.
 
 ---
 
@@ -1824,6 +1845,7 @@ Modelled behaviour is **digital validation only**.
 | Traceability established | Yes - [requirements_traceability.md](requirements_traceability.md) |
 | Implementation | Phases 1-16 implemented and tested as a deterministic digital prototype |
 | System validation | Phase 17 complete - see [14_system_validation.md](14_system_validation.md): every requirement re-audited against code and tests; no status changed |
+| Engineering audit | Phase 18 complete - see [15_engineering_audit.md](15_engineering_audit.md): verdict **PASS WITH CONDITIONS**; no requirement status changed; hardware-design inputs identified |
 
 Individual statuses are synchronized with the traceability matrix. VERIFIED
 means bounded digital behavior only; PARTIAL and PLANNED remain explicit.
@@ -1853,6 +1875,7 @@ requirement and were corrected.
 - [12_engineering_decisions.md](12_engineering_decisions.md)
 - [13_integration_validation.md](13_integration_validation.md)
 - [14_system_validation.md](14_system_validation.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
 - [requirements_traceability.md](requirements_traceability.md)
 
 ## Corrective verification scope (2026-09-26)

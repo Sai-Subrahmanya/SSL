@@ -279,8 +279,12 @@ a deterministic digital model.
 `EVENT_REPORT`, `CONFIG_READ`, `CONFIG_WRITE`, `CONFIG_ACK`, `TIME_SYNC`,
 `TIME_ACK`, `IDENTIFY`, `IDENTIFY_ACK`, `HEARTBEAT`, `HEARTBEAT_ACK`.
 
-The protocol is **not** implemented yet. See
-[05_communication_architecture.md](05_communication_architecture.md).
+The protocol is implemented in `src/sslv1/comm/` as a deterministic digital
+model (frame, codecs, integrity, ordering, duplicate detection and the
+communication state machine); no UART, transceiver or electrical behaviour is
+modelled. See [05_communication_architecture.md](05_communication_architecture.md)
+and [10_hardware_reference.md](10_hardware_reference.md) for the physical-layer
+inputs that remain open.
 
 ---
 
@@ -379,5 +383,7 @@ The authoritative mapping is
 - [05_communication_architecture.md](05_communication_architecture.md)
 - [06_storage_and_logging.md](06_storage_and_logging.md)
 - [07_configuration.md](07_configuration.md)
+- [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)

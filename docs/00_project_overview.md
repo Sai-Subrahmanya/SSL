@@ -18,7 +18,7 @@ not itself introduce numbered requirements. Numbered requirements live in
 | --- | --- |
 | Project name | Smart Street Light V1 (SSL V1) |
 | Repository | `Sai-Subrahmanya/SSL` |
-| Current stage | Phases 1-17 complete as a deterministic digital prototype (Phase 17 = system validation); Phase 18 onward not started |
+| Current stage | Phases 1-18 complete as a deterministic digital prototype (Phase 17 = system validation, Phase 18 = final engineering audit); Phase 19 onward not started |
 | Repository classification | Early engineering / digital prototype development |
 | Production status | Not production firmware |
 
@@ -331,7 +331,7 @@ Details in [04_fault_management.md](04_fault_management.md).
 | Phase 15 | Master Control Center data layer | Sites, groups, lamps, aggregation, history, no GUI in early phases. | Implemented (deterministic digital data layer) |
 | Phase 16 | Full integration | End-to-end integration of all layers (MCC -> Group Controller -> Lamp Nodes -> reporting -> MCC aggregation), offline/recovery, restart/reconstruction and digital-scale checks. | Implemented (deterministic digital integration) |
 | Phase 17 | System validation | Validation against requirements, test evidence, traceability closure. | Complete (validation report; no status changes) |
-| Phase 18 | Engineering audit | Independent audit, engineering package preparation for partner review. | Not started |
+| Phase 18 | Engineering audit | Independent audit, engineering package preparation for partner review. | Complete (verdict PASS WITH CONDITIONS; see [15_engineering_audit.md](15_engineering_audit.md)) |
 
 Later phases are not implemented in advance. Each phase begins only after its
 requirements are documented and reviewed. Phase 15 delivered the logical
@@ -360,6 +360,18 @@ verification method names Phase 17 are now exercised by
 `tests/test_system_validation.py`. No status changed and no production code
 changed; the report is
 [14_system_validation.md](14_system_validation.md).
+
+Phase 18 closed the baseline with a final engineering audit: verdict **PASS
+WITH CONDITIONS**
+([15_engineering_audit.md](15_engineering_audit.md)). It found no production
+defect and changed no requirement status. It corrected stale and contradictory
+documentation, completed the hardware reference with the function blocks and
+safety, power and measurement inputs that are still open, recorded the
+previously unrecorded mains safety-class question as assumption `A-30`,
+recorded the prototype fault-reporting direction as `D-044` (`Proposed`), and
+re-mapped the assumptions register from completed digital phases to the
+engineering inputs that actually block schematic and PCB design. The
+architecture is frozen; the conditions are hardware and product inputs.
 
 ---
 
@@ -397,9 +409,12 @@ changed; the report is
 - Nominal V1 switched lamp output: 230 VAC.
 - Scope is single-phase, line-to-neutral.
 
-These are **engineering design targets**, not certification claims. See
-[docs/10_hardware_reference.md](10_hardware_reference.md) and
-[docs/11_assumptions.md](11_assumptions.md).
+These are **engineering design targets**, not certification claims. The
+product-safety architecture that follows from them (safety class, protective
+earth, isolation boundary) is still undecided - assumption `A-30`. See
+[docs/10_hardware_reference.md](10_hardware_reference.md),
+[docs/11_assumptions.md](11_assumptions.md) and
+[docs/15_engineering_audit.md](15_engineering_audit.md) section 11.
 
 ---
 
@@ -409,5 +424,7 @@ These are **engineering design targets**, not certification claims. See
 - [02_product_requirements.md](02_product_requirements.md)
 - [04_fault_management.md](04_fault_management.md)
 - [05_communication_architecture.md](05_communication_architecture.md)
+- [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)

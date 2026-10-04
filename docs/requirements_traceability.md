@@ -404,6 +404,27 @@ failing in-flight commands) are unchanged and still tested.
 
 ---
 
+## 11. Phase 18 final engineering audit
+
+The Phase 18 audit ([15_engineering_audit.md](15_engineering_audit.md))
+re-verified this matrix against the code and re-ran every citation check:
+
+| Check | Result |
+| --- | --- |
+| Requirements in `docs/02` / matrix rows | 88 / 88 - no missing row, no duplicated id, no orphan requirement |
+| Status counts | 77 `VERIFIED`, 8 `PARTIAL`, 3 `PLANNED` - **unchanged** |
+| `docs/02` status versus matrix status | 0 mismatches (the contradiction in `docs/02` section 6 was a documentation defect and is fixed) |
+| Citations resolved | every cited test exists in the cited file; no stale id, no wrong file |
+| Upgrades / downgrades | none - no row was upgraded for having an implementation or a passing test, and none was downgraded without cause |
+
+One consequence of the audit affects how `PR-FAULT-007` should be read: the
+single-snapshot limitation is now bounded by a recorded **`Proposed`**
+engineering decision (`D-044`, fault-set reporting for the physical prototype).
+The requirement stays `PARTIAL`, no code changed, and the limitation remains
+pinned by its integration test.
+
+---
+
 ## Corrective evidence and scoped limitations
 
 The complete corrective regression suite is `tests/test_post_merge.py`; the

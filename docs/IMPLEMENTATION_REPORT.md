@@ -646,3 +646,56 @@ bus, modelled devices, object-retention restarts. The exhaustive
 proven-digitally / requires-hardware split is
 [14_system_validation.md](14_system_validation.md) section 22, and it is the same
 boundary the earlier phases stated - no new claim, and no removed limitation.
+
+---
+
+## 14. Phase 18 - final engineering audit
+
+Phase 18 is an audit phase: it added no product behaviour and changed **no
+production code**. The report is
+[15_engineering_audit.md](15_engineering_audit.md); this section records what
+changed.
+
+### 14.1 Verdict and result
+
+**PASS WITH CONDITIONS.** The digital architecture is sound, has one owner per
+concern, no duplicated state machine and a traceability matrix that matches the
+implementation; requirement statuses are unchanged at 77 `VERIFIED` /
+8 `PARTIAL` / 3 `PLANNED`. The conditions are hardware and product inputs, not
+architectural defects: the undecided safety class, protective earth and
+isolation boundary (`A-30`), the open hardware inputs listed in `docs/10`
+sections 4 to 8, and the proposed fault-reporting contract (`D-044`).
+
+### 14.2 Changes
+
+| Change | Files |
+| --- | --- |
+| Assumption `A-30` (safety class / PE / isolation) recorded; blocking map re-mapped from completed digital phases to schematic/PCB/prototype/site inputs; counts now 30 (3 target, 19 open, 8 accepted) | `docs/11_assumptions.md` |
+| Hardware reference restructured: candidates with datasheet evidence, required function blocks not yet selected, mains/safety, power and measurement input lists | `docs/10_hardware_reference.md` |
+| `docs/02` section 6 rewritten as the authoritative digital-versus-physical split; boundary notes on `PR-CONTROL-005` and `PR-STORAGE-003`; audit row | `docs/02_product_requirements.md` |
+| Stale implementation-status and phase references corrected | `docs/05`, `docs/01`, `docs/03`, `docs/06` |
+| Fault-set reporting direction recorded as `D-044` (`Proposed`, not implemented); decision log now 44 entries (43 established, 1 proposed) | `docs/12_engineering_decisions.md` |
+| Phase 18 sections/pointers | `docs/13`, `docs/14`, `docs/08`, `docs/00`, `README.md`, `docs/requirements_traceability.md` section 11, this section |
+| Test-quality fixes: a concrete exception instead of `pytest.raises(Exception)`; an energy assertion on the published value instead of a private accumulator | `tests/test_configuration.py`, `tests/test_post_merge.py` |
+| Final audit report | `docs/15_engineering_audit.md` |
+
+### 14.3 Validation results
+
+| Check | Result |
+| --- | --- |
+| Baseline before Phase 18 (`2a76b8d`) | 645 passed; 38 integration; 6 system validation; compileall 0; pyflakes 5 inherited; markdownlint 21 files / 0 issues |
+| `python3 -m pytest` (full suite) | **645 passed** (two tests modified, none added) |
+| `python3 -m pytest tests/test_integration.py` | 38 passed |
+| `python3 -m compileall -q src tests` | exit 0 |
+| `pyflakes src/sslv1 tests/*.py` | 5 pre-existing findings, none from Phase 18 |
+| `npx markdownlint-cli2` | 22 files, 0 issues |
+| `git diff` production code | none - `src/` untouched |
+
+### 14.4 Boundaries
+
+No physical claim was added, no `PARTIAL`/`PLANNED` requirement was closed, and
+no hardware decision was invented. The audit distinguishes what is proven
+digitally from what requires hardware, an engineering/datasheet decision or
+system/installation information (`docs/15` section 24). The prototype is not a
+certified or production-ready product, and nothing in this phase suggests
+otherwise.

@@ -56,7 +56,7 @@ Lamp nodes transmit only in response to a request addressed to them
 | Parameter | Status | Notes |
 | --- | --- | --- |
 | Baud rate | **Candidate** | 9.6 kbps or 19.2 kbps. Low baud rate favours noise immunity on long runs. |
-| Data bits / parity / stop bits | **Not decided** | To be fixed in Phase 9. |
+| Data bits / parity / stop bits | **Not decided** | A UART/transceiver-level parameter; it belongs to the hardware design (see [10_hardware_reference.md](10_hardware_reference.md)). |
 | Node addressing | Unique per group | `PR-IDENTITY-003` |
 | Termination | End-of-bus termination concept | Physical detail deferred to hardware phase. |
 | Maximum node count | Approximately 16 initial target; must scale | `PR-SCALABILITY-001` |
@@ -318,8 +318,10 @@ A lamp node continues to:
 | Polling cycle time | Determined by node count and baud rate | Must remain within the configured reporting interval. |
 | Bus loading | Determined by polling and reporting intervals | Measurement and reporting intervals are independently configurable. |
 
-Polling cycle time and baud rate selection are **not yet decided**; they are
-recorded as assumptions pending a Phase 9 decision.
+Polling cycle time and baud rate selection are **not yet decided**; they remain
+open (`A-05`) and belong to the hardware design, because they depend on the
+transceiver, cable length and termination chosen there. The digital model
+imposes no timing dependence on them.
 
 ---
 
@@ -343,10 +345,17 @@ recorded as assumptions pending a Phase 9 decision.
 | Item | Status |
 | --- | --- |
 | Architecture defined | Yes |
-| Frame format | Defined (field level) |
-| Message types | Defined (initial set) |
-| Encoding, timing, electrical details | **Not defined** - Phase 9 |
-| Implementation | **Not started** (Phase 9 / Phase 10 / Phase 11) |
+| Frame format | Defined and implemented (`src/sslv1/comm/frame.py`) |
+| Message types | Defined and implemented (17 types, `src/sslv1/comm/protocol.py`) |
+| Integrity, ordering, duplicates, state machine | Implemented (`crc.py`, `sequence.py`, `state_machine.py`) |
+| Encoding | Implemented and tested (`tests/test_comm.py`, `tests/test_post_merge.py`) |
+| Timing, electrical details, UART, transceiver | **Not defined** - hardware design inputs, see [10_hardware_reference.md](10_hardware_reference.md) |
+| Implementation | Digital protocol implemented and exercised end to end; no physical driver, no UART, no transceiver |
+
+What the implementation does **not** decide is the physical layer: baud rate,
+framing at the UART level, transceiver, termination, biasing, cable and
+protection are hardware-design inputs and are listed in
+[10_hardware_reference.md](10_hardware_reference.md).
 
 ---
 
@@ -360,6 +369,7 @@ recorded as assumptions pending a Phase 9 decision.
 - [07_configuration.md](07_configuration.md)
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
 
 ## Revision 2 digital protocol and transaction contract
 

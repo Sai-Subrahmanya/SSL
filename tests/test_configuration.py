@@ -6,6 +6,8 @@ operational threshold is hardcoded.
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from sslv1.configuration import Schedule, TimeWindow
@@ -197,9 +199,17 @@ def test_two_nodes_can_use_different_thresholds(lamp_identity):
 
 
 def test_configuration_is_immutable_once_validated(lamp_identity):
+    """A validated configuration is a frozen value object.
+
+    The specific exception matters: a generic failure would also be raised by
+    an unrelated bug, so the test pins the *immutability* mechanism
+    (``FrozenInstanceError``, i.e. an ``AttributeError``) and then checks that
+    the value really is unchanged.
+    """
     config = make_lamp_config(lamp_identity.lamp_id).validated()
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         config.light_on_threshold = 999.0
+    assert config.light_on_threshold != 999.0
 
 
 # --------------------------------------------------------------------------

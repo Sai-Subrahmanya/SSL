@@ -8,8 +8,11 @@ It records decisions that have already been established, so that future work
 has a stable baseline and so that any later change is visible as a change
 rather than as a silent drift.
 
-Only decisions established in the project direction are recorded here. No
-additional engineering decisions have been invented.
+Most entries are `Established` and in force. Where the engineering audit found
+that a decision must be taken before the physical design can be frozen, a
+`Proposed` entry records the direction for review; a `Proposed` entry is **not**
+in force and describes nothing that is implemented. No decision has been
+invented, and no open question has been recorded as decided.
 
 ---
 
@@ -645,13 +648,27 @@ Each decision contains:
 
 ---
 
+### D-044 - Fault-set reporting contract for the physical prototype
+
+| Field | Value |
+| --- | --- |
+| Decision ID | D-044 |
+| Date | 2026-10-04 |
+| Decision | The reporting contract between the Group Controller and the operator layer shall, for the physical prototype, carry the lamp's active fault **set** (bounded) - every active fault identity with its lifecycle state and per-fault open/close transitions - instead of a single active-fault snapshot. |
+| Reason | The data model allows a lamp to hold concurrent faults (`docs/03`), but the current `FAULT_REPORT` pull carries one snapshot (`docs/05` section 5). The consequence is demonstrable: with two confirmed faults on one lamp only one is propagated, and a fault closed while another is being reported is never recorded as cleared at the operator layer (`PR-FAULT-007` is PARTIAL; pinned by `tests/test_integration.py::test_concurrent_confirmed_faults_are_bounded_by_the_single_fault_report_pull`). A monitoring system that withholds a second fault on the same lamp, or keeps listing a closed fault as active, is not an acceptable physical baseline. |
+| Alternatives | Keep the single snapshot and accept the limitation in V1 (cheapest, but loses concurrent-fault visibility and can leave a stale active fault listed). Report only the highest-severity fault plus an "additional faults exist" count (bounded payload, but identities stay hidden). Report the full bounded active set with per-fault transitions (chosen direction). |
+| Consequences | The report payload and its acknowledgement grow with the active-fault count and therefore need a bound and an encoding; the Group Controller and the operator layer must apply per-fault open/close transitions instead of a single snapshot. The digital model keeps its current snapshot behaviour until that revision exists, so `PR-FAULT-007` remains `PARTIAL` and this entry remains `Proposed`; no code changed with this entry. |
+| Status | `Proposed` (direction for the physical-prototype wire contract; not implemented, not in force) |
+
+---
+
 ## 5. Summary
 
 | Metric | Value |
 | --- | --- |
-| Total decisions recorded | 43 |
+| Total decisions recorded | 44 |
 | `Established` | 43 |
-| `Proposed` | 0 |
+| `Proposed` | 1 |
 | `Superseded` | 0 |
 
 No decisions beyond those established in the project direction have been
@@ -659,7 +676,10 @@ invented in this log. Decisions D-031 to D-039 were introduced by review
 finding REVIEW-000 and are recorded in the review record; D-040 and D-041 were
 added by the Phase 14 and Phase 15 implementations respectively; D-042 and
 D-043 record the Phase 16 restart and record-intake decisions, which the
-Phase 17 audit found implemented but not yet in this log.
+Phase 17 audit found implemented but not yet in this log. D-044 was added by
+the Phase 18 engineering audit as a `Proposed` direction for the
+physical-prototype fault-reporting contract; it is deliberately not implemented
+in the digital model.
 
 ---
 
@@ -668,7 +688,9 @@ Phase 17 audit found implemented but not yet in this log.
 - [00_project_overview.md](00_project_overview.md)
 - [01_system_architecture.md](01_system_architecture.md)
 - [02_product_requirements.md](02_product_requirements.md)
+- [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
 - [requirements_traceability.md](requirements_traceability.md)
 
 ## Implementation reconciliation (2026-09-26)

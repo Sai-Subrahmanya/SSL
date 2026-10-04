@@ -114,7 +114,7 @@ Section 7.1 records the harness and the scope of that evidence.
 | Phase 15 - Master Control Center data layer | Aggregation, history, audit. | L3 |
 | Phase 16 - Full integration | End-to-end behaviour. | L3 |
 | Phase 17 - System validation | Requirements coverage and evidence review. | L3, L4 (complete: [14_system_validation.md](14_system_validation.md)) |
-| Phase 18 - Engineering audit | Traceability closure and over-claim review. | L4 |
+| Phase 18 - Engineering audit | Traceability closure and over-claim review. | L4 (complete: [15_engineering_audit.md](15_engineering_audit.md)) |
 
 ---
 
@@ -300,6 +300,7 @@ logic only**. This is stated explicitly in the traceability record.
 - [requirements_traceability.md](requirements_traceability.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
 
 ## Post-merge corrective regression evidence
 

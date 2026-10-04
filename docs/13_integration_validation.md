@@ -533,7 +533,18 @@ documentation-vs-code divergences (the two link-fault statements in `docs/04`
 and `docs/05`, the duplicate section numbering in `docs/03`, and the section
 numbering in `docs/04`).
 
-## 19. Related documents
+## 19. Phase 18 re-audit of this document
+
+The Phase 18 final engineering audit
+([15_engineering_audit.md](15_engineering_audit.md)) re-checked every claim in
+this document. The three production fixes, the `PR-FAULT-007` limitation, the
+restart/reconstruction evidence and the software-scale timings were all
+confirmed unchanged. The only addition that affects this document is the
+`Proposed` decision `D-044` (fault-set reporting for the physical prototype),
+which is a direction for the wire contract and is not implemented in the
+digital model.
+
+## 20. Related documents
 
 - [02_product_requirements.md](02_product_requirements.md)
 - [requirements_traceability.md](requirements_traceability.md)

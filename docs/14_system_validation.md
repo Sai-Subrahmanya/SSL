@@ -473,3 +473,13 @@ sections 4-6 and repeated in every phase summary.
 * [11_assumptions.md](11_assumptions.md)
 * [12_engineering_decisions.md](12_engineering_decisions.md)
 * [IMPLEMENTATION_REPORT.md](IMPLEMENTATION_REPORT.md) - section 13
+
+---
+
+Phase 18 ([15_engineering_audit.md](15_engineering_audit.md)) re-audited every
+claim in this report against the code and the tests as part of the final
+engineering audit: the disposition (77 `VERIFIED` / 8 `PARTIAL` / 3 `PLANNED`)
+and all limitations recorded here were confirmed unchanged, and the two test
+corrections it made (a specific exception instead of a generic one, and an
+assertion on the published energy value instead of a private attribute) are
+Phase 18 test-quality fixes, not status changes.
