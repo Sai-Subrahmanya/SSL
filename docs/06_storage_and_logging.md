@@ -200,6 +200,25 @@ upload queue**. The retained historical record is **not** deleted. Removal
 from a temporary upload queue and deletion of a retained historical record
 are distinct operations (`PR-STORAGE-009`).
 
+### 9.3.1 Phase 16 orchestration and receiving end
+
+The sequence is implemented as one deterministic step,
+`GroupController.resynchronize_upstream()`, which reports
+`recovered / stage / buffered / uploaded / confirmed / failed / remaining`.
+`MasterControlCenter.recover_upstream()` drives it per group, and
+`MccUpstreamLink` is the MCC end of the existing abstract upstream link: the MCC
+accepts each record identity once (arrival order preserved, duplicates counted
+but not stored twice), and refuses a record it cannot attribute to that group's
+controller so the sender keeps it pending. When the link is still down the step
+reports `recovered: False` at stage `RECOVERY` with every buffered record still
+pending - nothing is dropped and nothing is claimed as delivered.
+
+The automatic *trigger* for that step is not implemented: the digital model has
+no background scheduler, so recovery is detected by the caller (the MCC or a
+scenario) before the step runs. That is why `PR-OFFLINE-005` remains PARTIAL.
+Evidence: `tests/test_integration.py` (offline A-H and recovery tests), see
+[13_integration_validation.md](13_integration_validation.md) section 6.
+
 ### 9.4 No silent loss
 
 ```text
@@ -228,8 +247,8 @@ delivered or being explicitly reported as lost/corrupt
 
 ## 11. Storage sizing considerations (indicative, not requirements)
 
-The following considerations inform the Phase 8 design. They are **not**
-requirements and no capacity figure is committed here:
+The following considerations inform the storage-medium decision. They are
+**not** requirements and no capacity figure is committed here:
 
 - number of nodes per group (~16 initial target),
 - measurement interval and reporting interval (configurable),
@@ -237,8 +256,11 @@ requirements and no capacity figure is committed here:
 - target retention duration,
 - upload cadence.
 
-Storage sizing is deferred to Phase 8, when intervals and record layout are
-designed.
+Storage sizing is deferred to the hardware architecture phase, when the
+storage medium, the record layout and the intervals are fixed
+([10_hardware_reference.md](10_hardware_reference.md)). Record layout is
+already defined at information level in
+[03_data_model.md](03_data_model.md).
 
 ---
 
@@ -266,8 +288,8 @@ designed.
 | Storage architecture | Defined |
 | Record envelope | Defined (field level) |
 | Commit and corruption semantics | Defined |
-| Physical layout, wear levelling, capacity | **Not defined** - Phase 8 |
-| Implementation | **Not started** (Phase 8) |
+| Physical layout, wear levelling, capacity | **Not defined** - hardware architecture / storage-medium phase |
+| Implementation | Logical RecordStore and event history implemented; no physical storage driver |
 
 ---
 
@@ -281,3 +303,37 @@ designed.
 - [08_testing_strategy.md](08_testing_strategy.md)
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
+
+## Corrective digital storage semantics
+
+CRC covers sequence, timestamp ticks and synchronization validity, type,
+device identity and payload. Upload/confirmation require valid committed
+records and legal lifecycle state. Corrupt records cannot be uploaded or
+confirmed; recovery reports discarded records in the store audit log.
+
+RecordStore.delete requires an authenticated ADMIN/OWNER Actor under the
+preliminary role mapping, refuses pending/non-retained/too-young records and
+audits denials and accepted deletion. Successful deletion creates a logical
+tombstone, not physical secure erasure, and reclaims simulated capacity. A
+second delete cannot manufacture another successful transition. The store has
+its own audit log even without a callback; node/controller callbacks additionally
+record structured actor and record identity. Upload confirmation leaves retained
+history intact. Lamp configuration retention is wired to the actual store.
+
+Measurement polling replays the oldest valid buffered node measurement before
+live-only readings. The GC confirms a stored-record sequence only after local
+buffering, on its next request; retries are idempotent. Event polling similarly
+confirms IDs before the node advances. Thus a lost response does not silently
+remove pending history. Node retained records/events are not deleted by these
+confirmations. GC command, configuration, communication and synchronization
+audit records are also buffered for upstream delivery.
+
+Capacity exhaustion raises/records an explicit condition without overwriting
+history. Unbuffered samples/events remain visible as failure events; there is
+no promise of unbounded history in finite capacity. This deterministic simulation
+behavior **does not resolve A-09**. Retention defaults remain unspecified (A-10,
+A-29); no automatic deletion worker or numeric retention policy is invented.
+The stores and logs are in-memory objects retained by the simulated restart;
+process death, flash programming, filesystem persistence, wear leveling and
+real power interruption are not validated. Calibration storage is not implemented.

@@ -71,7 +71,10 @@ class Actor:
     authenticated: bool = True
 
     def __post_init__(self) -> None:
-        if not self.actor_id or not self.actor_id.strip():
+        if not isinstance(self.role, Role) or type(self.authenticated) is not bool:
+            from .errors import ValidationError
+            raise ValidationError("invalid actor role or authentication status")
+        if not isinstance(self.actor_id, str) or not self.actor_id.strip():
             from .errors import ValidationError
 
             raise ValidationError("actor_id must not be empty")

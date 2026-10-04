@@ -71,7 +71,7 @@ Claim statement (simulated behaviour only)
 | Item | Status |
 | --- | --- |
 | Demonstrations produced | 0 |
-| Simulation source code | Not started (Phase 0 is documentation only) |
+| Simulation source code | Implemented digital model; demonstration packages remain unproduced |
 
 ---
 

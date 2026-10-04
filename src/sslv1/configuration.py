@@ -71,7 +71,7 @@ class Schedule:
     def always_on(cls, day_length_ticks: int) -> "Schedule":
         return cls(
             day_length_ticks=day_length_ticks,
-            windows=(TimeWindow(0, day_length_ticks - 1),),
+            windows=(TimeWindow(0, day_length_ticks),),
         )
 
     def is_on(self, ticks: int) -> bool:
@@ -85,9 +85,11 @@ class Schedule:
         candidates = []
         for window in self.windows:
             for bound in (window.start_tick_of_day, window.end_tick_of_day):
+                if self.is_on(bound - 1) == self.is_on(bound):
+                    continue
                 delta = (bound - tick_of_day) % self.day_length_ticks
                 candidates.append(delta if delta else self.day_length_ticks)
-        if not self.windows:
+        if not candidates:
             return None
         return ticks + min(candidates)
 
@@ -172,6 +174,41 @@ class LampConfiguration:
     def validate(self) -> Tuple[str, ...]:
         """Return a tuple of validation error messages (empty when valid)."""
         errors: list[str] = []
+
+        from math import isfinite
+        from dataclasses import fields
+        enums = {"configured_mode": ConfiguredMode, "out_of_window_state": LampState,
+                 "restart_default_state": LampState, "escalation_role": Role, "energy_reset_role": Role}
+        for name, enum_type in enums.items():
+            if not isinstance(getattr(self, name), enum_type):
+                errors.append(name + " has invalid enum value")
+        for name in ("lamp_id", "site_id", "group_id", "product_id"):
+            if not isinstance(getattr(self, name), Identifier):
+                errors.append(name + " must be an Identifier")
+        if not isinstance(self.bus_address, BusAddress) or not isinstance(self.schedule, Schedule):
+            errors.append("invalid address or schedule")
+        for name in ("ack_required", "automatic_deletion"):
+            if type(getattr(self, name)) is not bool:
+                errors.append(name + " must be boolean")
+        for item in fields(self):
+            value = getattr(self, item.name)
+            if isinstance(item.default, (int, float)) and not isinstance(item.default, bool):
+                if type(value) not in (int, float) or not isfinite(value):
+                    errors.append(item.name + " must be finite numeric")
+                elif isinstance(item.default, int) and type(value) is not int:
+                    errors.append(item.name + " must be an integer")
+        if self.minimum_retention_ticks is not None and type(self.minimum_retention_ticks) is not int:
+            errors.append("minimum_retention_ticks must be an integer or None")
+        if not isinstance(self.escalation_destination, str):
+            errors.append("escalation_destination must be a string")
+        if errors:
+            return tuple(errors)
+        if self.energy_reset_role not in (Role.ENGINEER, Role.ADMIN, Role.OWNER):
+            errors.append("energy_reset_role cannot grant below engineering privilege")
+        if self.restart_default_state not in (LampState.ON, LampState.OFF):
+            errors.append("restart_default_state must be ON or OFF")
+        if self.storage_full_behaviour is not None:
+            errors.append("storage-full product policy is undecided; use None")
 
         # lighting control
         if self.light_on_threshold >= self.light_off_threshold:

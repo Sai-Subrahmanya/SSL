@@ -204,11 +204,12 @@ def test_force_on_overrides_automatic_logic(lamp_node, operator):
     assert lamp_node.control.lamp_is_on is False
 
     record = lamp_node.force_on(operator, ticks=2000)
-    assert record.succeeded is True
+    assert record.succeeded is False
     assert lamp_node.control.effective_mode is OperatingMode.FORCE_ON
 
     decision = lamp_node.step(healthy_sources(light_level=900.0), ticks=3000)
     assert decision.commanded_state is LampState.ON
+    assert record.succeeded is True
     assert decision.decided_by == ControlLayer.AUTHORIZED_OVERRIDE
 
 

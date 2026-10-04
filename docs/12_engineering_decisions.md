@@ -8,8 +8,11 @@ It records decisions that have already been established, so that future work
 has a stable baseline and so that any later change is visible as a change
 rather than as a silent drift.
 
-Only decisions established in the project direction are recorded here. No
-additional engineering decisions have been invented.
+Most entries are `Established` and in force. Where the engineering audit found
+that a decision must be taken before the physical design can be frozen, a
+`Proposed` entry records the direction for review; a `Proposed` entry is **not**
+in force and describes nothing that is implemented. No decision has been
+invented, and no open question has been recorded as decided.
 
 ---
 
@@ -285,7 +288,7 @@ Each decision contains:
 | --- | --- |
 | Decision ID | D-018 |
 | Date | 2026-09-25 |
-| Decision | Frames carry start-of-frame, protocol version, source address, destination address, message type, payload length, payload, sequence number and CRC. The initial message type set is defined in the communication architecture document. The protocol is not implemented yet. |
+| Decision | Frames carry start-of-frame, protocol version, source address, destination address, message type, payload length, payload, sequence number and CRC. The initial message type set is defined in the communication architecture document. A digital implementation now exists; physical protocol details remain deferred. |
 | Reason | Establishes the protocol baseline before implementation. |
 | Alternatives | Adopting an existing off-the-shelf protocol at this stage. |
 | Consequences | Phase 9 implements framing, sequencing and CRC against this baseline. |
@@ -456,7 +459,7 @@ Each decision contains:
 | Decision | The Master Control Center is defined as a logical operator/control and data layer. No graphical user interface is built in the early phases. |
 | Reason | Interface work would precede validated behaviour. |
 | Alternatives | Building an operator dashboard first. |
-| Consequences | The Master Control Center data layer is deferred to Phase 15. |
+| Consequences | The Master Control Center data layer is deferred to Phase 15. Phase 15 implemented it as an in-memory logical model (`src/sslv1/mcc.py`) without a GUI. |
 | Status | `Established` |
 
 ---
@@ -603,28 +606,80 @@ Each decision contains:
 
 ---
 
+### D-041 - Master Control Center is a consumer of existing components
+
+| Field | Value |
+| --- | --- |
+| Decision ID | D-041 |
+| Date | 2026-10-04 |
+| Decision | The Phase 15 Master Control Center is an in-memory aggregation and orchestration layer over the existing LampNode, GroupController, AuthorizationService, CommandService and record store. It holds no lamp control, fault lifecycle, event log, storage or permission rules of its own; it reads the existing state and routes operator commands through the existing authorized command path with the original actor identity. |
+| Reason | A second implementation would create two sources of truth for status, faults, audits and authorization, which contradicts D-030 (logical layer) and the single-lifecycle requirements. |
+| Alternatives | Giving the MCC its own control model, fault engine, event log and permission table. |
+| Consequences | Status, faults, events and commands are only ever read from or written to the existing components; aggregation is deterministic and derived. The MCC keeps no persistence (see 03_data_model.md) and no GUI (D-030). Production multi-group deployment, persistence and scale validation remain outside the digital prototype. |
+| Status | `Established` |
+
+---
+
+### D-042 - Group Controller restart re-initializes transient state only
+
+| Field | Value |
+| --- | --- |
+| Decision ID | D-042 |
+| Date | 2026-10-04 |
+| Decision | A Group Controller restart keeps identity, configuration, registrations, the per-link replay window and the retained record store (including the pending upload queue). It clears state a restarted device cannot have: queued inbound frames, pending requests and their deadlines, volatile per-node views (last measurement, last status, last acknowledgement payloads, awaiting-response flags) and the evidence of a verified time synchronization. In-flight command transactions end `FAILED`. The restart is audited as `NODE_RESTARTED`/`WARNING` carrying `nodes`, `cleared_requests` and `failed_commands`. |
+| Reason | A restarted device has no requests in flight, so presenting a command as `ACKNOWLEDGED` and still awaiting evidence would be a false claim about a dead transaction. Conversely, discarding the retained store or the replay window would lose evidence and weaken replay detection - a restart must not make the system *less* safe. |
+| Alternatives | Reset everything (loses buffered evidence and breaks store-and-forward). Keep everything (presents pre-restart volatile data as current, and leaves dead transactions pending forever). |
+| Consequences | Restart behavior is deterministic and asserted by tests (`test_controller_restart_drops_transient_state_and_keeps_persistence`); the MCC shows `UNKNOWN` for healthy-comm lamps until a fresh poll, and `DEGRADED`/`UNAVAILABLE` where the link itself is unhealthy. This is digital object re-initialization: no flash retention, brown-out or MCU power-loss behavior is claimed (`docs/09`). |
+| Status | `Established` (implemented in Phase 16, recorded by the Phase 17 audit) |
+
+---
+
+### D-043 - MCC upstream record intake semantics
+
+| Field | Value |
+| --- | --- |
+| Decision ID | D-043 |
+| Date | 2026-10-04 |
+| Decision | The Master Control Center accepts an uploaded record only when it is valid, attributable to that group's controller, and consistent with the scope the record itself declares (`site_id`, `group_id`, and any `lamp_id` must match the delivering group). A record that was already received is answered `True` - the far end has it - but counted as a duplicate and stored once. A record it cannot attribute is refused (`False`) and stays pending at the sender. Received records are kept in arrival order, unchanged, and the MCC keeps no second record format. |
+| Reason | The sender's confirmation semantics are "the far end has it", so a re-sent record after a lost confirmation must not be reported as a failure; but a second copy must not corrupt or duplicate history either. And because group identities are unique only inside a site, a mis-delivered record must be refused rather than filed under the wrong site, group or lamp. |
+| Alternatives | Store every delivery (duplicates corrupt history). Refuse duplicates as failures (a lost confirmation would strand a delivered record). Trust the payload's own identity without the delivering link (cross-site contamination). |
+| Consequences | The intake is an append log in arrival order plus a duplicate counter; the MCC still owns no storage engine, no lifecycle and no second source of truth (`D-041`), and record identity is `(site, group, record type, sequence number)`. |
+| Status | `Established` (implemented in Phase 16, recorded by the Phase 17 audit) |
+
+---
+
+### D-044 - Fault-set reporting contract for the physical prototype
+
+| Field | Value |
+| --- | --- |
+| Decision ID | D-044 |
+| Date | 2026-10-04 |
+| Decision | The reporting contract between the Group Controller and the operator layer shall, for the physical prototype, carry the lamp's active fault **set** (bounded) - every active fault identity with its lifecycle state and per-fault open/close transitions - instead of a single active-fault snapshot. |
+| Reason | The data model allows a lamp to hold concurrent faults (`docs/03`), but the current `FAULT_REPORT` pull carries one snapshot (`docs/05` section 5). The consequence is demonstrable: with two confirmed faults on one lamp only one is propagated, and a fault closed while another is being reported is never recorded as cleared at the operator layer (`PR-FAULT-007` is PARTIAL; pinned by `tests/test_integration.py::test_concurrent_confirmed_faults_are_bounded_by_the_single_fault_report_pull`). A monitoring system that withholds a second fault on the same lamp, or keeps listing a closed fault as active, is not an acceptable physical baseline. |
+| Alternatives | Keep the single snapshot and accept the limitation in V1 (cheapest, but loses concurrent-fault visibility and can leave a stale active fault listed). Report only the highest-severity fault plus an "additional faults exist" count (bounded payload, but identities stay hidden). Report the full bounded active set with per-fault transitions (chosen direction). |
+| Consequences | The report payload and its acknowledgement grow with the active-fault count and therefore need a bound and an encoding; the Group Controller and the operator layer must apply per-fault open/close transitions instead of a single snapshot. The digital model keeps its current snapshot behaviour until that revision exists, so `PR-FAULT-007` remains `PARTIAL` and this entry remains `Proposed`; no code changed with this entry. |
+| Status | `Proposed` (direction for the physical-prototype wire contract; not implemented, not in force) |
+
+---
+
 ## 5. Summary
 
 | Metric | Value |
 | --- | --- |
-| Total decisions recorded | 40 |
-| `Established` | 40 |
-| `Proposed` | 0 |
+| Total decisions recorded | 44 |
+| `Established` | 43 |
+| `Proposed` | 1 |
 | `Superseded` | 0 |
 
 No decisions beyond those established in the project direction have been
 invented in this log. Decisions D-031 to D-039 were introduced by review
-finding REVIEW-000 and are recorded in the review record.
-
-| Metric | Value |
-| --- | --- |
-| Total decisions recorded | 30 |
-| `Established` | 30 |
-| `Proposed` | 0 |
-| `Superseded` | 0 |
-
-No decisions beyond those established in the project direction have been
-invented in this log.
+finding REVIEW-000 and are recorded in the review record; D-040 and D-041 were
+added by the Phase 14 and Phase 15 implementations respectively; D-042 and
+D-043 record the Phase 16 restart and record-intake decisions, which the
+Phase 17 audit found implemented but not yet in this log. D-044 was added by
+the Phase 18 engineering audit as a `Proposed` direction for the
+physical-prototype fault-reporting contract; it is deliberately not implemented
+in the digital model.
 
 ---
 
@@ -633,5 +688,22 @@ invented in this log.
 - [00_project_overview.md](00_project_overview.md)
 - [01_system_architecture.md](01_system_architecture.md)
 - [02_product_requirements.md](02_product_requirements.md)
+- [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
 - [requirements_traceability.md](requirements_traceability.md)
+
+## Implementation reconciliation (2026-09-26)
+
+The earlier decisions remain the product-direction baseline; no open hardware,
+storage-full, numeric-retention or production-security decision is closed here.
+The corrective implementation follows D-017 (distinct command stages), D-031
+(single configured mode plus override), D-033 (independent notification), D-035
+(retention versus confirmation), D-036 (preliminary roles), D-037 (abstract GC
+buffer), D-038 (RESET_ENERGY subtype) and D-039 (logical-only time).
+
+Protocol revision 2, its strict binary metadata, symmetric numeric hysteresis
+margin and version-zero startup convention are explicit **digital implementation
+conventions** documented in 05/07, not new claims of approved hardware design,
+production authentication, site thresholds or numeric retention. They require
+engineering review before any firmware/wire compatibility baseline is frozen.

@@ -67,6 +67,7 @@ values, which are resolved against
 | Status value | Meaning |
 | --- | --- |
 | `VERIFIED (digital prototype)` | Implemented in `src/sslv1/` and demonstrated by a deterministic test in `tests/`. **Digital prototype only** - no physical property is validated. |
+| `PARTIAL (digital prototype; see requirements_traceability.md)` | Some digital behavior is tested; explicit schema/integration scope remains incomplete. |
 | `IMPLEMENTED (digital prototype)` | Implemented in `src/sslv1/`; no named test yet. |
 | `Proposed - not implemented` | No implementation exists yet. Reserved for physical-only requirements and work belonging to a later phase. |
 
@@ -291,7 +292,7 @@ A command shall not be considered successful merely because it was received.
 The command lifecycle shall be:
 
 ```text
-COMMAND_SENT -> RECEIVED -> EXECUTED -> ACKNOWLEDGED -> ACTUAL_STATE_VERIFIED
+COMMAND_CREATED -> RECEIVED -> EXECUTED -> ACKNOWLEDGED -> ACTUAL_STATE_VERIFIED
 ```
 
 and each stage shall be independently observable.
@@ -350,6 +351,13 @@ operation.
 **Rationale.**
 Uncontrolled post-reset behaviour can leave lamps in an unknown state and
 makes field faults undiagnosable.
+
+**Requirement / design boundary.**
+The digital prototype demonstrates the modelled restart path: the state that
+is restored, the event that is reported and the resumption of operation. Real
+watchdog behaviour, brown-out behaviour, relay fail-state and the physical
+restart time are hardware items (see
+[10_hardware_reference.md](10_hardware_reference.md) section 6).
 
 ---
 
@@ -726,7 +734,7 @@ must produce one latched fault condition, not a stream of new alerts.
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 6); integration test (Phase 16)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 A confirmed fault shall be notified to the operator layer, and the
@@ -734,6 +742,17 @@ notification status shall be tracked on the fault record.
 
 **Rationale.**
 Faults that are detected but never surfaced provide no operational value.
+
+**Known limitation (Phase 16).**
+The node notifies and tracks notification state per fault, and the Phase 16
+integration verifies the whole path for a lamp's reported fault. However, the
+`FAULT_REPORT` pull carries a single active-fault snapshot (`docs/03` allows
+concurrent faults on one lamp): with two confirmed faults only one is
+propagated while it is the snapshot, and a fault closed while another fault is
+being reported is never cleared upstream, so the operator view can list a
+closed fault as active. A fault-set report is a wire-contract change for a later
+phase; no GC/MCC-side inference was added because it would either invent a
+clear or hide a possibly active fault.
 
 ---
 
@@ -794,7 +813,7 @@ Distinguishes "known and being worked on" from "known and ignored".
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 6)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 The system shall support a `VERIFYING` state in which a repaired fault is
@@ -949,7 +968,7 @@ unresponsive node.
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 11)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 Communication health shall be modelled by the state machine:
@@ -1031,6 +1050,14 @@ power loss occurring at any point.
 Street-light nodes lose power routinely; partial records must never be
 mistaken for valid data.
 
+**Requirement / design boundary.**
+The digital prototype demonstrates the commit-marker protocol, detection of an
+incomplete record and recovery from a simulated power loss at every point. It
+does not establish real flash programming behaviour, write timing, wear or the
+power-fail window of a physical device; those require the storage-medium
+selection and physical validation
+([10_hardware_reference.md](10_hardware_reference.md) sections 4 and 11).
+
 ---
 
 #### PR-STORAGE-004 - Corruption detection and handling
@@ -1094,7 +1121,7 @@ value of the system.
 
 - **Priority:** SHOULD
 - **Verification method:** Inspection (Phase 8); digital prototype test (Phase 12)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 Firmware, configuration and calibration data shall be stored separately from
@@ -1205,7 +1232,7 @@ history.
 
 - **Priority:** MUST
 - **Verification method:** Inspection (Phase 12)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 The system shall support configuration of, as a minimum: operating mode,
@@ -1230,7 +1257,7 @@ hardcoded in business logic (`PR-CONFIG-006`).
 
 - **Priority:** MUST
 - **Verification method:** Digital prototype test (Phase 12)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 Configuration shall be readable and writable over the RS-485 bus, and each
@@ -1479,7 +1506,7 @@ Group size is a primary cost and performance driver of the architecture.
 
 - **Priority:** SHOULD
 - **Verification method:** Integration test (Phase 13)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 The architecture shall support multiple groups per site, aggregated at the
@@ -1586,7 +1613,7 @@ Buffering is the mechanism that makes offline operation non-destructive.
 
 - **Priority:** MUST
 - **Verification method:** Integration test (Phase 16); system validation (Phase 17)
-- **Status:** VERIFIED (digital prototype)
+- **Status:** PARTIAL (digital prototype; see requirements_traceability.md)
 
 **Requirement.**
 After communication recovery, buffered records shall be delivered following
@@ -1786,20 +1813,26 @@ principle.
 
 ---
 
-## 6. Requirements that cannot be verified digitally
+## 6. Digital versus physical verification of mixed requirements
 
-The following requirements are verified by **inspection** or by physical
-test and are not claimed as validated by the digital prototype:
+Some requirements combine a **modelled behaviour** that the digital prototype
+can demonstrate with a **physical property** that only hardware can establish.
+For those, `VERIFIED (digital prototype)` applies to the modelled part only -
+the physical part is never claimed. This table is the authoritative split, and
+it matches the traceability matrix and
+[15_engineering_audit.md](15_engineering_audit.md) section 24.
 
-| Requirement | Reason |
-| --- | --- |
-| `PR-MEASURE-005` | Documentation-level constraint on claims |
-| `PR-SECURITY-005` | Documentation-level constraint on claims |
-| `PR-CONTROL-005` | Physical restart behaviour is modelled, not measured |
-| `PR-STORAGE-003` | Power-loss safety is modelled, not physically tested |
-| `PR-TIME-001` | RTC behaviour is modelled, not physically tested |
+| Requirement | What the digital evidence covers | What remains physical |
+| --- | --- | --- |
+| `PR-MEASURE-005` | The claim constraint itself: the model carries no billing-grade field and no billing-grade accuracy statement | Any accuracy claim would require calibrated measurement on hardware |
+| `PR-CONTROL-005` | The modelled restart path restores a defined commanded state, reports the restart and resumes | Real watchdog/reset behaviour, relay fail-state and brown-out behaviour |
+| `PR-STORAGE-003` | The commit-marker protocol and recovery from an incomplete record, including a simulated power loss at every point | Real flash programming, wear, write timing and power-fail behaviour |
+| `PR-TIME-001` | Logical local timekeeping, validity, ordering and restart semantics | Physical RTC accuracy, backup retention and temperature behaviour (`PR-TIME-005`) |
+| `PR-SECURITY-005` | Nothing - the requirement is a documentation boundary | Any certification or inspection evidence would be required before such a claim |
 
-Modelled behaviour is **digital validation only**.
+Modelled behaviour is **digital validation only**. Requirement-specific
+boundary notes appear under the requirements themselves where the wording
+could otherwise be read as a physical claim.
 
 ---
 
@@ -1810,12 +1843,21 @@ Modelled behaviour is **digital validation only**.
 | Requirements drafted | Yes (88 requirements) |
 | Independent review | REVIEW-000 recorded as *approved with required corrective actions* - see [review/README.md](review/README.md) |
 | Traceability established | Yes - [requirements_traceability.md](requirements_traceability.md) |
-| Implementation | Phase 1 domain model implemented and tested |
+| Implementation | Phases 1-16 implemented and tested as a deterministic digital prototype |
+| System validation | Phase 17 complete - see [14_system_validation.md](14_system_validation.md): every requirement re-audited against code and tests; no status changed |
+| Engineering audit | Phase 18 complete - see [15_engineering_audit.md](15_engineering_audit.md): verdict **PASS WITH CONDITIONS**; no requirement status changed; hardware-design inputs identified |
 
-Requirement status values in this document remain `Proposed - not
-implemented` at the individual requirement level; implementation and
-verification state is recorded in the traceability matrix rather than
-duplicated here.
+Individual statuses are synchronized with the traceability matrix. VERIFIED
+means bounded digital behavior only; PARTIAL and PLANNED remain explicit.
+The requirements themselves are not weakened to fit the implementation.
+
+Phase 17 re-checked all 88 statuses against the implementation and the test
+evidence ([14_system_validation.md](14_system_validation.md)). No status
+changed: 77 `VERIFIED`, 8 `PARTIAL`, 3 `PLANNED`. Two `VERIFIED` rows
+(`PR-MEASURE-003`, `PR-CONFIG-005`) had evidence that did not demonstrate the
+claim and were given real evidence; two rows (`PR-IDENTITY-003`,
+`PR-IDENTITY-004`) cited tests that did not exist or did not exercise the
+requirement and were corrected.
 
 ---
 
@@ -1831,4 +1873,20 @@ duplicated here.
 - [08_testing_strategy.md](08_testing_strategy.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+- [13_integration_validation.md](13_integration_validation.md)
+- [14_system_validation.md](14_system_validation.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
 - [requirements_traceability.md](requirements_traceability.md)
+
+## Corrective verification scope (2026-09-26)
+
+Current status: 77 VERIFIED (bounded digital behavior), 8 PARTIAL, 3 PLANNED.
+These statuses supersede blanket completion summaries. The full requirements
+are unchanged; PARTIAL exposes missing integration/schema/application scope
+rather than silently relaxing a requirement. The corrective implementation and
+regressions are detailed in IMPLEMENTATION_REPORT.md and the traceability matrix.
+
+Physical ON/OFF command success requires fresh observations, not a transmitted
+frame, received ACK alone or commanded boolean. Mode/override/energy actions
+verify the state they actually modify. Receipt at the Group Controller is
+observable separately from remote execution and actual-state verification.

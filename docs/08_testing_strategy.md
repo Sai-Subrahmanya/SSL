@@ -86,6 +86,11 @@ The digital prototype shall support deterministic injection of at least:
 | Unacknowledged notification | Validate escalation and no-auto-shutdown (`PR-FAULT-008`, `PR-FAULT-009`). |
 | Failed verification | Validate return to active fault state (`PR-FAULT-011`). |
 
+The matrix above is implemented for the digital model in
+`tests/test_fault_injection.py` (Phase 14), together with injected link,
+command, fault-lifecycle, notification, storage, time and multi-node failures.
+Section 7.1 records the harness and the scope of that evidence.
+
 ---
 
 ## 7. Phase-to-test mapping
@@ -108,8 +113,68 @@ The digital prototype shall support deterministic injection of at least:
 | Phase 14 - Fault injection | Deterministic injection matrix and recovery. | L2, L3 |
 | Phase 15 - Master Control Center data layer | Aggregation, history, audit. | L3 |
 | Phase 16 - Full integration | End-to-end behaviour. | L3 |
-| Phase 17 - System validation | Requirements coverage and evidence review. | L3, L4 |
-| Phase 18 - Engineering audit | Traceability closure and over-claim review. | L4 |
+| Phase 17 - System validation | Requirements coverage and evidence review. | L3, L4 (complete: [14_system_validation.md](14_system_validation.md)) |
+| Phase 18 - Engineering audit | Traceability closure and over-claim review. | L4 (complete: [15_engineering_audit.md](15_engineering_audit.md)) |
+
+---
+
+## 7.1 Phase 14 fault-injection evidence
+
+Phase 14 is implemented as a deterministic fault-injection layer over the
+digital model, not as hardware testing:
+
+| Item | Value |
+| --- | --- |
+| Harness | `tests/fault_injection.py` (`GroupSim`, injected readings, bus/storage/time hooks) |
+| Scenarios | `tests/test_fault_injection.py` (12 fault categories and scenarios A-J) |
+| Focused defect regressions | `tests/test_post_merge.py` (empty pull, live-only reading), `tests/test_fault.py` (environmental observation) |
+| Determinism | Logical clock only; no wall-clock time, randomness, network or hardware access |
+| Scope claim | Validates modelled behaviour only; no electrical-safety, EMC/RF, thermal, enclosure or physical-RTC claim |
+
+Every scenario asserts the state before the injection, the immediate response,
+the retry/deadline behaviour, the eventual state, the audit evidence and that
+unaffected components stayed unaffected. Faults are injected through the
+documented hooks (readings, bus silence/corruption, storage hooks, time model);
+the harness does not bypass the domain layer.
+
+## 7.2 Phase 15 Master Control Center evidence
+
+Phase 15 is implemented as a deterministic in-memory aggregation layer over the
+existing components, not as an application or a second implementation:
+
+| Item | Value |
+| --- | --- |
+| Harness | `tests/mcc_harness.py` (`MccSim`: sites, groups, 16-lamp nodes, group controllers, in-memory buses, one shared logical clock and one `AuthorizationService`) |
+| Scenarios | `tests/test_mcc.py` (13 sections: registries, live snapshot, aggregation, degradation and failure containment, fault visibility, event/audit visibility, commands, authorization, configuration readback, local independence, end-to-end scenarios) |
+| Evidence basis | Only Group Controller registrations, node measurements, stored records and the existing event log are read; every command goes through the existing authorization and command path |
+| Determinism | Logical clock only; no wall-clock time, randomness, network or hardware access |
+| Scope claim | Validates modelled aggregation behaviour only; no GUI, cloud, database, production backend or physical validation is claimed |
+
+Each test asserts the state before and after the action; degradation tests verify
+that healthy members do not hide unhealthy ones and that one group's failure
+does not change another group's reported state.
+
+---
+
+### 7.3 Phase 16 full-integration evidence
+
+Phase 16 runs the complete digital hierarchy (Master Control Center over Group
+Controller over Lamp Nodes) in one deterministic system:
+
+| Item | Value |
+| --- | --- |
+| Harness | `tests/mcc_harness.py` (real `LampNode`/`GroupController`/`MasterControlCenter` objects, shared logical clock and authorization service, in-memory bus, injectable upstream link) |
+| Scenarios | `tests/test_integration.py` (38 tests: scenarios A-D, fault path, offline A-H, restart/reconstruction, multi-group/multi-site, communication, configuration, time/freshness, digital scale, negative/authorization) |
+| Determinism | One logical clock, no randomness, no wall-clock dependency in the assertions, no I/O |
+| Scope claim | Integrated modelled behaviour only; no hardware, serial-electrical, EMC/RF, RTC or production claim |
+| Tests | `python3 -m pytest tests/test_integration.py` (38) and the full suite (639 at the time; 645 after the Phase 17 evidence tests) |
+| Findings | Two production defects fixed (all-unavailable group aggregation; Group Controller time-synchronization claim) and one status change (`PR-FAULT-007` to PARTIAL, concurrent-fault pull limit) |
+
+The integration tests assert what the MCC was actually told, never what the
+simulation internally knows: a lamp step that was not reported does not change
+the MCC view, and an execution ACK is never treated as actual-state
+verification. Details are in
+[13_integration_validation.md](13_integration_validation.md).
 
 ---
 
@@ -124,7 +189,7 @@ Each phase shall produce:
 | Deviation record | Any requirement not met, with reason and disposition. |
 | Review note | Reviewer comments, recorded under `docs/review/`. |
 
-### 8.1 Evidence produced for Phases 1-13
+### 8.1 Evidence produced for Phases 1-17
 
 The deterministic suite now lives in [`tests/`](../tests/) and is run with
 `python3 -m pytest` from the repository root. It uses only Python 3.9+ and
@@ -144,6 +209,13 @@ pytest.
 | `tests/test_comm.py` | Frame structure, CRC, message types, payload codecs, bus behaviour, communication state machine. |
 | `tests/test_group_controller.py` | Registration, polling, multi-node isolation, communication failure/retry/recovery, time distribution, store-and-forward. |
 | `tests/test_scenarios.py` | 50 numbered end-to-end scenarios cross-referenced to requirements. |
+| `tests/test_post_merge.py` | Corrective regression suite (authorization, fresh verification, deadlines, corruption, retention) and the Phase 14 defect regressions. |
+| `tests/fault_injection.py` | Phase 14 deterministic fault-injection harness (`GroupSim`, injected readings, link/storage/time hooks); test support, not production code. |
+| `tests/test_fault_injection.py` | Phase 14 injected-fault scenarios: 12 fault categories and the A-J end-to-end scenarios. |
+| `tests/mcc_harness.py` | Phase 15 Master Control Center simulation harness (`MccSim`); test support, not production code. |
+| `tests/test_mcc.py` | Phase 15 MCC data-layer scenarios: registries, aggregation, degradation, fault/event visibility, commands, authorization, config readback, local independence and end-to-end scenarios. |
+| `tests/test_integration.py` | Phase 16 full-integration scenarios (38): scenarios A-D, fault path to the MCC, offline/store-and-forward A-H, restart/reconstruction, multi-group/multi-site isolation, communication including negative frames, configuration with readback, time/freshness, digital/software-scale (including per-lamp command routing across the 64-lamp run) and authorization negatives. |
+| `tests/test_system_validation.py` | Phase 17 system-validation evidence (6): total-supervision outage, interrupted recovery, fault-never-darkens-the-street, energy accumulation and restart survival, applied-configuration restart survival, and unsynchronized-time validity. Closes the evidence gaps found by the Phase 17 audit. |
 
 Every `VERIFIED` entry in
 [requirements_traceability.md](requirements_traceability.md) names the module
@@ -215,9 +287,9 @@ logic only**. This is stated explicitly in the traceability record.
 | Item | Status |
 | --- | --- |
 | Test strategy defined | Yes |
-| Fault injection matrix defined | Yes (candidate list) |
-| Test identifiers / tooling | **Not defined** |
-| Tests implemented | **None** (intentionally - Phase 0 only) |
+| Fault injection matrix defined | Yes |
+| Test identifiers / tooling | pytest; deterministic logical clock, no wall clock or randomness |
+| Tests implemented | Yes - `tests/` covers Phases 1-17 (645 tests); see section 8.1 |
 
 ---
 
@@ -228,3 +300,23 @@ logic only**. This is stated explicitly in the traceability record.
 - [requirements_traceability.md](requirements_traceability.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+- [15_engineering_audit.md](15_engineering_audit.md)
+
+## Post-merge corrective regression evidence
+
+Run `python -m pytest -ra` from an environment installed with `.[dev]`.
+The full suite includes the unchanged baseline scenarios plus corrected
+asynchronous expectations and `tests/test_post_merge.py`. Tests exercise real
+node/controller bus pumps, not only codec round trips: no traffic for denied
+control/configuration/time actions; asserted-role separation; pending execution;
+fresh actual evidence; mismatched/late ACKs; command timeout/idempotency;
+malformed-payload retransmission; bounded full-cycle sequence reuse; genuine
+deadlines/retries; recovery; versioned readback; fault/notification integration;
+retention, corruption and authorized deletion; and loss/retry of historical
+measurement and event reports.
+
+Old tests that equated delivery with response, or a commanded bit with actual
+verification, now assert waiting first, supply observations/advance logical time,
+and retain strong final-success assertions. No existing test was deleted.
+The existing logical/full-suite baseline is not proof of electrical properties.
+Final test/static results and audit findings are in IMPLEMENTATION_REPORT.md.

@@ -145,16 +145,12 @@ requirements, architecture or design.
 
 ## 9. Explicit non-goals for the current phase
 
-The current phase (Phase 0) produces **documentation only**:
-
-- no simulation source code,
-- no test code,
-- no build system, packaging or dependency configuration,
-- no hardware design files.
-
-The only non-documentation file added is a Markdown lint configuration
-(`.markdownlint-cli2.jsonc`), which exists solely to validate the formatting
-of this documentation set.
+The repository now contains executable Python domain and integration models,
+packaging and tests. The earlier Phase 0 documentation-only description is
+historical, not the current implementation status. Current verified behavior
+and partial/deferred requirements are recorded in the implementation report
+and traceability matrix. Passing digital tests does not mean every product
+requirement is complete or that the model is physical PCB firmware.
 
 ---
 
@@ -166,3 +162,113 @@ of this documentation set.
 - [10_hardware_reference.md](10_hardware_reference.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+
+## Phase 14 fault-injection boundaries
+
+Phase 14 is a **deterministic fault-injection layer over the digital model**,
+not hardware validation. `tests/fault_injection.py` builds simulated lamp nodes
+and a Group Controller on the in-memory bus and injects readings, link faults,
+storage faults and time conditions; `tests/test_fault_injection.py` contains
+the scenarios (12 fault categories plus the A-J end-to-end scenarios). The
+harness uses the documented hooks only and never bypasses the domain layer, and
+the scenarios assert the state before the injection, the immediate response,
+retry/deadline behaviour, the eventual state, the audit evidence and the fact
+that unaffected nodes stayed unaffected.
+
+What the layer demonstrates:
+
+- injected sensor, electrical, switching-feedback, communication, command,
+  fault-lifecycle, notification, storage and time faults produce the documented
+  states, retries, deadlines, containment and recovery, with audit evidence;
+- a corrupt or unconfirmed record is never silently lost or duplicated, and
+  delivery, execution and verification remain distinct stages;
+- one node's fault does not propagate to healthy nodes in a 16-node group.
+
+What it does not demonstrate (unchanged by this phase): electrical safety,
+mains wiring, isolation/creepage/clearance, EMC/RF, surge/ESD, relay life or
+inrush, thermal/enclosure/IP properties, metering accuracy, physical RTC
+behaviour, certification or production readiness. Injected faults are modelled
+conditions, and their timing is logical time, not hardware timing.
+
+Two open engineering questions surfaced while injecting faults; neither is
+answered here and neither is a product requirement change:
+
+1. A FORCE_ON/FORCE_OFF command whose execution is confirmed can only reach
+   `ACTUAL_STATE_VERIFIED` from a *fresh* measurement. When the configured
+   measurement interval is longer than the absolute command deadline, the
+   command record ends `FAILED` although the node executed it. The correct
+   relationship between those parameters remains open (no numeric value is
+   frozen); the current bounded behaviour is pinned by a test.
+2. A notification that has entered `DELIVERY_FAILED` after the configured
+   retry limit rests there: a later successful delivery is not modelled as
+   recovering it. Whether an operator-triggered resend path is required
+   remains open; the current resting behaviour and its audit event are pinned
+   by a test.
+
+---
+
+## Phase 16 integration boundaries
+
+Phase 16 connects the existing layers into one executable system
+(MCC -> Group Controller -> Lamp Nodes -> reporting -> MCC aggregation) and
+fixed two defects the integration exposed. The boundaries that remain are
+recorded here and in
+[13_integration_validation.md](13_integration_validation.md) section 15:
+
+- the `FAULT_REPORT` pull carries a single active-fault snapshot, so concurrent
+  confirmed faults on one lamp cannot both be propagated and a fault closed
+  while another is reported is not cleared upstream (`PR-FAULT-007` is PARTIAL);
+- recovery orchestration exists as one deterministic step, but its automatic
+  trigger does not, because the model has no background scheduler
+  (`PR-OFFLINE-005` is PARTIAL);
+- the MCC keeps received records in memory only, with no database, and derives
+  every view from the controllers it holds (no second source of truth);
+- restart is digital object re-initialisation - no flash retention, brown-out or
+  MCU power-loss behaviour is modelled;
+- configuration is verified end to end only for the integer-scalar subset, and
+  is not stored from a physically separate configuration medium;
+- scale evidence is 2 sites x 2 groups x 16 lamps of *software* behaviour; no
+  embedded CPU/memory/bus-timing claim is made;
+- the upstream link and the field bus are modelled in memory; no serial
+  electrical behaviour, network stack, transport timeout or retry protocol is
+  claimed;
+- security remains an asserted actor on a trusted bus (`PR-SECURITY-004/005`
+  stay PLANNED).
+
+## Remaining model boundaries after the corrective pass
+
+Authentication remains an asserted Actor flag/role on a trusted in-memory bus,
+not peer authentication or cryptographic replay protection. Record/identity/
+configuration persistence is simulated object retention across restart, not
+process or hardware persistence. Repair verification is an authorized external
+outcome, not proof of physical repair. Structured remote configuration,
+physical calibration storage and automatic GC-link-to-managed-fault adaptation
+are not completed features. The Phase 15 Master Control Center is an in-memory
+data/orchestration layer over the existing controllers: it has no GUI, no
+persistence, no production backend and no validated production multi-site
+deployment. Phase 16 made that layer the upstream end of the existing link and
+proved the integrated flow end to end; it did not turn the model into a
+deployable system, and the concurrent-fault reporting limit bounds
+`PR-FAULT-007` to PARTIAL.
+See PARTIAL/PLANNED rows in requirements_traceability.md; no blanket completion
+claim supersedes those limitations.
+
+Phase 17 audited every requirement against the implementation and the test
+evidence ([14_system_validation.md](14_system_validation.md)). It found no
+requirement whose status was stronger than its evidence, no duplicated source
+of truth and no new limitation: the boundaries listed above are the complete
+set, and the seven requirements whose verification method names Phase 17 are
+now exercised by `tests/test_system_validation.py` rather than assumed.
+
+## Phase 18 engineering-audit boundary
+
+The Phase 18 engineering audit ([15_engineering_audit.md](15_engineering_audit.md))
+re-checked this scope statement and changed nothing in it. The verdict is
+**PASS WITH CONDITIONS**: the digital architecture is mature enough for
+preliminary engineering, while the conditions are physical or partner inputs -
+above all the undecided mains safety class, protective-earth treatment and
+isolation boundary (`A-30`), the hardware inputs listed in
+[10_hardware_reference.md](10_hardware_reference.md) sections 4 to 8, and the
+proposed fault-set reporting contract (`D-044`). The audit added no physical
+claim, removed no limitation and did not close any `PARTIAL` or `PLANNED`
+requirement.

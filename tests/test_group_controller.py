@@ -9,6 +9,8 @@ store-and-forward.
 
 import pytest
 
+from sslv1.authorization import Actor
+from sslv1.enums import Role
 from sslv1.enums import (
     CommState,
     EventType,
@@ -41,6 +43,7 @@ def build_node(clock, bus, authorizer, lamp_number: int) -> LampNode:
 
 
 def run_cycle(group: GroupController, nodes, ticks, message_type=MessageType.STATUS_REQUEST):
+    group.clock.advance(group.config.poll_timeout_ticks)
     group.poll(message_type)
     for node in nodes:
         for frame in node.process_incoming():
@@ -59,9 +62,12 @@ def test_group_controller_manages_multiple_nodes(clock, bus, authorizer,
     assert group_controller.node_count == 4
 
     results = group_controller.poll()
-    assert results == {1: True, 2: True, 3: True, 4: True}
+    assert results == {1: False, 2: False, 3: False, 4: False}
     for node in nodes:
-        node.process_incoming()
+        for frame in node.process_incoming():
+            bus.send(frame)
+    group_controller.collect_responses()
+    assert all(r.last_seen_ticks is not None for r in group_controller.registrations)
     assert group_controller.communication_summary()["COMM_HEALTHY"] == 4
 
 
@@ -100,13 +106,16 @@ def test_one_silent_node_does_not_block_the_others(clock, bus, authorizer,
     bus.set_silent(2)
     results = group_controller.poll()
     assert results[2] is False
-    assert all(results[address] for address in (1, 3, 4))
+    assert all(not results[address] for address in (1, 3, 4))
 
     for node in nodes:
         if int(node.bus_address) != 2:
-            node.process_incoming()
+            for frame in node.process_incoming():
+                bus.send(frame)
     group_controller.collect_responses()
 
+    clock.advance(group_controller.config.poll_timeout_ticks)
+    group_controller.service_timeouts()
     assert group_controller.registration_for(
         Identifier("LAMP-02")
     ).comm.state is not CommState.COMM_HEALTHY
@@ -208,8 +217,8 @@ def test_time_synchronization_reaches_every_node(clock, bus, authorizer,
         group_controller.register_node(node.lamp_id, node.bus_address)
 
     clock.advance(5000)
-    results = group_controller.synchronize_time(master_ticks=clock.ticks)
-    assert results == {1: True, 2: True, 3: True}
+    results = group_controller.synchronize_time(master_ticks=clock.ticks, actor=Actor("time-admin", Role.ADMIN))
+    assert results == {1: False, 2: False, 3: False}
     for node in nodes:
         node.process_incoming()
     for node in nodes:
@@ -253,11 +262,12 @@ def test_configuration_distribution_is_acknowledged(clock, bus, authorizer,
     record = group_controller.distribute_configuration(
         node.lamp_id, {"fault_confirmation_count": 5}, engineer, config_version=2
     )
-    assert record.succeeded is True
+    assert record.succeeded is False
 
     for frame in node.process_incoming():
         group_controller.bus.send(frame)
     group_controller.collect_responses()
+    assert record.succeeded is True
     assert node.config.fault_confirmation_count == 5
     assert node.config_version == 2
 
@@ -392,20 +402,13 @@ def test_unregistered_frame_is_rejected(clock, bus, authorizer, group_controller
 # addressing test and a code-stability test, neither of which touches
 # sequence numbers at all.
 # --------------------------------------------------------------------------
-def _status_frame(source: int, sequence: int):
-    from sslv1.comm import Frame
-
-    return Frame(
-        source=source,
-        destination=0,
-        message_type=MessageType.STATUS_REQUEST,
-        sequence=sequence,
-    )
-
-
 def _feed(group_controller, source: int, sequence: int):
-    """Deliver one frame from a node and run the receive path."""
-    group_controller.receive(_status_frame(source, sequence))
+    from sslv1.comm import Frame, encode_payload
+    reg = next(r for r in group_controller.registrations if int(r.bus_address) == source)
+    request = group_controller._send_request(reg, MessageType.HEARTBEAT)['frame']
+    group_controller.receive(Frame(source, 0, MessageType.HEARTBEAT_ACK,
+        encode_payload(MessageType.HEARTBEAT_ACK, {'local_ticks': 0,
+                       'request_sequence': request.sequence}), sequence))
     group_controller.collect_responses()
 
 

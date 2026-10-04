@@ -3,7 +3,7 @@
   // documentation set. Line length is not enforced because engineering
   // documents contain long table rows and technical prose.
   "globs": ["**/*.md"],
-  "ignores": ["node_modules"],
+  "ignores": ["node_modules", ".venv"],
   "config": {
     "MD013": false,
     "MD033": false,

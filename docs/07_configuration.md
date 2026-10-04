@@ -227,7 +227,7 @@ auditable. The values themselves are site engineering decisions.
 | Validation rules defined | Yes (rule level) |
 | Audit model defined | Yes |
 | Default values | **Not decided** |
-| Implementation | **Not started** (Phase 12) |
+| Implementation | Digital implementation; bounded remote subset (see corrective contract below) |
 
 ---
 
@@ -240,3 +240,75 @@ auditable. The values themselves are site engineering decisions.
 - [06_storage_and_logging.md](06_storage_and_logging.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+
+## Corrective implementation contract and field audit
+
+The immutable `LampConfiguration` held by `ControlModel.config` is the single
+configured-mode authority; `LampNode.config` delegates to it. Node command
+and supported bus configuration paths keep consumers synchronized. Direct
+mutation of component internals is a test hook, not an authorized configuration
+API. Node startup configuration version is **0**. Writes must have a positive
+strictly newer version; version 1 is accepted first, then 2; stale, duplicate
+and zero versions are rejected atomically with version/acceptance/reason in
+CONFIG_ACK. Identical transport retries return the cached original ACK without
+reapplying a write. SET_MODE also increments the configuration version.
+
+The prototype's explicit numeric hysteresis convention is symmetric margin:
+ON at `light <= light_on_threshold - light_hysteresis/2`; OFF at
+`light >= light_off_threshold + light_hysteresis/2`; retain the previous state
+between these inclusive boundaries. Zero margin preserves the original nominal
+threshold dead band. The existing constraint `0 <= light_hysteresis <=
+light_off_threshold - light_on_threshold` remains. This is a documented
+simulation interpretation of configurable hysteresis, not a selected site
+threshold or hardware sensor specification. Invalid light input retains state.
+
+Every field below is declared/validated in `src/sslv1/configuration.py`.
+Numeric configuration is finite and type checked; identity, enum, boolean,
+ordering, count and duration constraints are checked before application.
+The table accounts for all LampConfiguration fields, not merely field names.
+
+| Fields | Consumer / validation focus | Tests and scope |
+| --- | --- | --- |
+| lamp_id, site_id, group_id, product_id, bus_address | Node constructor hierarchy/address agreement; identity, measurement, event and protocol reporting | test_identity.py; test_configuration.py; identity ACK integration |
+| configured_mode | ControlModel, SET_MODE and versioned configuration | test_mode_single_source_through_both_paths; test_mode_command_is_versioned_and_audited |
+| light_on_threshold, light_off_threshold, light_hysteresis | Ordered nominal thresholds and bounded margin; ControlModel sensor decisions | test_control.py; test_hysteresis_margin_affects_both_boundaries |
+| schedule, out_of_window_state | Schedule and ControlModel; valid bounds, exclusive ends, ON/OFF out-of-window value | test_control.py; test_always_on_all_boundaries_and_no_transition |
+| measurement_interval_ticks | Simulation sample/energy interval; positive integer | test_measurement.py; test_configuration.py |
+| reporting_interval_ticks | LampNode measurement record cadence; positive integer | test_reporting_interval_is_configurable |
+| voltage_min, voltage_max | MeasurementValidator, DiagnosticEngine, command verification supply evidence; ordered band | test_measurement.py; test_diagnostics.py |
+| under_current_min, expected_current_min, over_current_max | DiagnosticEngine; ordered nonnegative current bands | test_diagnostics.py; test_current_bands_must_be_ordered |
+| unexpected_current_min | DiagnosticEngine and actual-state derivation | test_diagnostics.py; test_missing_current_cannot_verify_off |
+| power_max, power_consistency_tolerance | MeasurementValidator and command evidence checks | test_measurement.py; test_observation_mismatch_fails_instead_of_false_verification |
+| light_level_min, light_level_max | MeasurementValidator and DiagnosticEngine sensor range | test_measurement.py; test_diagnostics.py |
+| fault_confirmation_count, fault_confirmation_window_ticks | FaultEngine consecutive confirmation policy | test_fault.py; test_confirmation_requires_consecutive_matching_classification |
+| comm_retry_count | Lamp Node's injectable communication health machine; GC polling has its own group-level retry count | test_comm.py; remote reconfiguration updates the node machine limit; autonomous node link-watchdog scheduling is not implemented |
+| comm_timeout_ticks | Node pending remote physical-verification timeout, driven by process_incoming | test_command_timeout_and_late_response_cannot_resurrect; GC transaction deadlines use group configuration |
+| ack_required | NotificationEngine; false selects NOT_REQUIRED in this model | test_not_required_when_ack_not_configured |
+| ack_reminder_interval_ticks, escalation_timeout_ticks | NotificationEngine deadlines; escalation exceeds reminder | test_persistent_fault_does_not_reset_notification_deadlines |
+| escalation_destination, escalation_role | NotificationPolicy, escalation audit destination/role; abstract delivery only | test_fault.py |
+| notification_retry_count | NotificationEngine bounded delivery retries | test_fault.py delivery-failure/retry tests |
+| restart_default_state | LampNode restart; only ON/OFF | test_control.py restart tests; pending commands fail across restart |
+| automatic_deletion, minimum_retention_ticks | RecordStore retention and candidate selection; deletion still explicit/authorized | test_storage.py; test_configured_retention_is_enforced_by_node; test_remote_retention_update_changes_store_policy |
+| storage_full_behaviour | Reserved open A-09; only None accepted; no selected product policy is silently ignored | test_storage_full_behaviour_defaults_to_undecided; test_storage_full_behaviour_is_a_simulation_detail_not_a_decision |
+| energy_reset_role | Additional engineering-or-higher minimum for RESET_ENERGY; cannot weaken base engineering authorization | test_energy_reset_requires_authorization; remote subtype role matrix |
+| max_nodes_in_group | Reserved per-lamp advisory field, not a second group capacity authority | Explicitly deferred: GroupControllerConfig.max_nodes alone governs registration; test_group_controller_supports_the_initial_group_target |
+
+GroupControllerConfig fields: `max_nodes` is consumed by registration;
+`poll_timeout_ticks` and `poll_retry_count` drive request deadlines/retries;
+`storage_capacity` constructs the bounded RecordStore. Validation lives in
+GroupControllerConfig.validated and RecordStore. Group tests and the
+post-merge silent-node/corrupt-request tests exercise these consumers.
+
+Remote CONFIG_READ/WRITE currently supports an explicit integer-scalar subset:
+configured_mode, light_on_threshold, light_off_threshold, light_hysteresis,
+measurement_interval_ticks, reporting_interval_ticks, fault_confirmation_count,
+fault_confirmation_window_ticks, comm_retry_count, comm_timeout_ticks,
+ack_reminder_interval_ticks, escalation_timeout_ticks, minimum_retention_ticks.
+For the nullable minimum, -1 means unspecified. Unknown keys and invalid modes
+are rejected; identity/address cannot be overwritten through this path. Fractional
+wire scalars and mode indices are rejected, not silently truncated.
+Structured schedules, arbitrary fractional thresholds and the other fields are
+local construction-time configuration, **not a fully implemented remote schema**.
+PR-CONFIG-001/002 are therefore marked PARTIAL rather than claiming every
+configuration parameter is remotely distributable. No production schema or
+site retention value is invented by this corrective pass.

@@ -1,3 +1,5 @@
+from sslv1.authorization import Actor
+from sslv1.enums import Role
 """Storage model tests (PR-STORAGE-*).
 
 Covers: record lifecycle, commit markers, corruption detection, power-loss
@@ -108,7 +110,7 @@ def test_queue_removal_and_deletion_are_distinct_operations(store):
     assert len(store.pending_upload) == 0
 
     # Deletion is a separate, explicit operation.
-    store.delete(record.sequence_number, actor="admin-01", ticks=10_000)
+    store.delete(record.sequence_number, actor=Actor("admin-01", Role.ADMIN), ticks=10_000)
     assert record.lifecycle_state is RecordLifecycleState.DELETED
     assert len(store.retained) == 0
 
@@ -116,7 +118,7 @@ def test_queue_removal_and_deletion_are_distinct_operations(store):
 def test_pending_upload_records_cannot_be_deleted(store):
     record = make_record(store)
     with pytest.raises(StorageError):
-        store.delete(record.sequence_number, actor="admin-01", ticks=10_000)
+        store.delete(record.sequence_number, actor=Actor("admin-01", Role.ADMIN), ticks=10_000)
 
 
 # --------------------------------------------------------------------------
@@ -172,8 +174,8 @@ def test_deletion_inside_minimum_retention_is_refused():
     store.mark_uploaded(record.sequence_number)
     store.mark_confirmed(record.sequence_number)
     with pytest.raises(StorageError):
-        store.delete(record.sequence_number, actor="admin-01", ticks=3000)
-    store.delete(record.sequence_number, actor="admin-01", ticks=9000)
+        store.delete(record.sequence_number, actor=Actor("admin-01", Role.ADMIN), ticks=3000)
+    store.delete(record.sequence_number, actor=Actor("admin-01", Role.ADMIN), ticks=9000)
     assert record.lifecycle_state is RecordLifecycleState.DELETED
     assert store.deleted_sequences == (record.sequence_number,)
 
@@ -261,7 +263,7 @@ def test_deletion_raises_an_audit_event_through_the_node(lamp_node):
 
     before = len(lamp_node.events)
     lamp_node.storage.delete(
-        record.sequence_number, actor="admin-01", ticks=50_000
+        record.sequence_number, actor=Actor("admin-01", Role.ADMIN), ticks=50_000
     )
 
     emitted = list(lamp_node.events)[before:]
@@ -278,7 +280,7 @@ def test_deletion_audit_reports_the_actor(lamp_node):
     lamp_node.storage.mark_uploaded(record.sequence_number)
     lamp_node.storage.mark_confirmed(record.sequence_number)
 
-    lamp_node.storage.delete(record.sequence_number, actor="engineer-07", ticks=9000)
+    lamp_node.storage.delete(record.sequence_number, actor=Actor("engineer-07", Role.ADMIN), ticks=9000)
 
     events = [
         e for e in lamp_node.events if e.event_type.value == "RECORD_DELETED"
@@ -293,7 +295,7 @@ def test_store_without_a_hook_still_deletes():
     record = store.records[0]
     store.mark_uploaded(record.sequence_number)
     store.mark_confirmed(record.sequence_number)
-    store.delete(record.sequence_number, actor="admin-01", ticks=10_000)
+    store.delete(record.sequence_number, actor=Actor("admin-01", Role.ADMIN), ticks=10_000)
     assert record.lifecycle_state is RecordLifecycleState.DELETED
 
 

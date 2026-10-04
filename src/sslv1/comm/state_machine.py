@@ -95,6 +95,16 @@ class CommunicationStateMachine:
             self._move(CommState.COMM_FAULT, "recovery failed")
         return self._state
 
+    def retry_exhausted(self) -> CommState:
+        """Finish a request's configured retry budget without inventing misses."""
+        if self._state is CommState.COMM_HEALTHY:
+            self._move(CommState.RETRY, "request retries exhausted")
+        if self._state is CommState.RETRY:
+            self._move(CommState.DEGRADED, "request retry budget exhausted")
+        if self._state in (CommState.DEGRADED, CommState.RECOVERY):
+            self._move(CommState.COMM_FAULT, "request failed after final deadline")
+        return self._state
+
     def begin_recovery(self) -> CommState:
         """Enter RECOVERY after a communication fault when a response arrives."""
         if self._state is CommState.COMM_FAULT:

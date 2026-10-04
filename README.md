@@ -165,37 +165,31 @@ its requirements, architecture and design are documented.
 | Phase | Name | Status |
 | --- | --- | --- |
 | Phase 0 | Repository foundation | **Complete** |
-| Phase 1 | Core domain model | **Complete** (digital prototype) |
-| Phase 2 | Lamp Node | **Complete** (digital prototype) |
-| Phase 3 | Lighting control | **Complete** (digital prototype) |
-| Phase 4 | Measurement model | **Complete** (digital prototype) |
-| Phase 5 | Diagnostics | **Complete** (digital prototype) |
-| Phase 6 | Fault lifecycle | **Complete** (digital prototype) |
-| Phase 7 | Event / logging | **Complete** (digital prototype) |
-| Phase 8 | Persistent storage simulation | **Complete** (digital prototype) |
-| Phase 9 | RS-485 protocol | **Complete** (digital prototype) |
-| Phase 10 | Group Controller | **Complete** (digital prototype) |
-| Phase 11 | Communication failure / recovery | **Complete** (digital prototype) |
-| Phase 12 | Configuration | **Complete** (digital prototype) |
-| Phase 13 | Multi-node simulation | **Complete** (digital prototype) |
-| Phase 14 | Fault injection | Not started |
-| Phase 15 | Master Control Center data layer | Not started |
-| Phase 16 | Full integration | Not started |
-| Phase 17 | System validation | Not started |
-| Phase 18 | Engineering audit | Not started |
+| Phase 1 | Core domain model | Implemented (bounded digital model) |
+| Phase 2 | Lamp Node | Implemented (bounded digital model) |
+| Phase 3 | Lighting control | Implemented (bounded digital model) |
+| Phase 4 | Measurement model | Implemented (bounded digital model) |
+| Phase 5 | Diagnostics | Implemented (bounded digital model) |
+| Phase 6 | Fault lifecycle | Implemented (bounded digital model) |
+| Phase 7 | Event / logging | Implemented (bounded digital model) |
+| Phase 8 | Persistent storage simulation | Implemented (bounded digital model) |
+| Phase 9 | RS-485 protocol | Implemented (bounded digital model) |
+| Phase 10 | Group Controller | Implemented (bounded digital model) |
+| Phase 11 | Communication failure / recovery | Implemented (bounded digital model) |
+| Phase 12 | Configuration | Implemented (bounded digital model) |
+| Phase 13 | Multi-node simulation | Implemented (bounded digital model) |
+| Phase 14 | Fault injection | Implemented (deterministic digital model) |
+| Phase 15 | Master Control Center data layer | Implemented (deterministic digital data layer) |
+| Phase 16 | Full integration | Implemented (deterministic digital integration) |
+| Phase 17 | System validation | Complete (validation report; no status changes) |
+| Phase 18 | Engineering audit | Complete (PASS WITH CONDITIONS; see docs/15_engineering_audit.md) |
 
-"Complete (digital prototype)" means the deterministic software model and its
-tests exist in `src/sslv1/` and `tests/`. It does **not** mean that any
-physical property has been validated. See
-[docs/requirements_traceability.md](docs/requirements_traceability.md) for the
-per-requirement status and its test evidence.
-
-This status table was audited against the implementation rather than assumed:
-every requirement was mapped to the phase its own verification method names and
-checked against real modules and real tests. Phases 1-13 are complete as
-digital prototypes; the three `PLANNED` requirements belong to Phases 14 and 18
-and are physical or inspection-only. The audited table is in
-[docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md#6-phase-1-13-audited-status).
+The phase table indicates model availability, not full product completion.
+Eight requirements remain PARTIAL and three PLANNED. Passing tests or the mere
+existence of modules does not establish requirement verification. See
+[docs/requirements_traceability.md](docs/requirements_traceability.md) for bounded
+per-requirement evidence and [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
+for the corrective review and remaining scope. Physical validation is separate.
 
 See [docs/00_project_overview.md](docs/00_project_overview.md) for the full
 roadmap description.
@@ -308,6 +302,9 @@ Hardware components referenced anywhere in the documentation are
     |-- 10_hardware_reference.md               Hardware candidates (not final)
     |-- 11_assumptions.md                      Assumptions register
     |-- 12_engineering_decisions.md            Engineering decision log
+    |-- 13_integration_validation.md           Phase 16 full-integration validation and limits
+    |-- 14_system_validation.md                Phase 17 system validation (requirement audit)
+    |-- 15_engineering_audit.md                Phase 18 final engineering audit
     |-- requirements_traceability.md           Requirement -> module -> test -> status
     |-- review/                                Independent technical review records
     `-- demo/                                  Demonstration material
@@ -356,12 +353,21 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Repository foundation | Complete |
 | Requirements baseline | Drafted for review (88 requirements) |
 | Architecture baseline | Drafted for review |
-| Assumptions register | Drafted for review (29 assumptions, 18 open) |
-| Engineering decision log | 40 decisions recorded |
-| Requirements traceability | Regenerated: 85 `VERIFIED`, 0 `IMPLEMENTED`, 3 `PLANNED` |
+| Assumptions register | Drafted for review (30 assumptions, 19 open) |
+| Engineering decision log | 44 decisions recorded (43 established, 1 proposed direction) |
+| Requirements traceability | Regenerated: See reconciled VERIFIED / PARTIAL / PLANNED counts in docs/requirements_traceability.md |
 | Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (302 tests, all passing) |
+| Deterministic test suite | Implemented in `tests/` (645 tests, all passing), including the Phase 14 fault-injection scenarios, the Phase 15 MCC data-layer scenarios, the Phase 16 full-integration scenarios (`tests/test_integration.py`, 38 tests) and the Phase 17 system-validation evidence (`tests/test_system_validation.py`, 6 tests) |
+| Final engineering audit | Complete - verdict **PASS WITH CONDITIONS**; no production defect, no requirement status changed, hardware/product inputs identified (`docs/15_engineering_audit.md`) |
 | Physical validation | **Not started** - requires hardware |
+
+The audit's conditions are physical or partner inputs, not architectural
+defects: the undecided mains safety class, protective earth and isolation
+boundary (`A-30`), the open hardware inputs in
+[docs/10_hardware_reference.md](docs/10_hardware_reference.md) sections 4 to 8,
+and the proposed fault-set reporting contract (`D-044`). Preliminary
+enclosure/mechanical CAD can start from those requirements; PCB layout cannot
+be frozen until they are decided.
 
 "Digital prototype" status means deterministic software behaviour has been
 implemented and tested. It does **not** mean that any physical property
@@ -377,5 +383,46 @@ duration or certification) has been validated.
 - [docs/02_product_requirements.md](docs/02_product_requirements.md)
 - [docs/11_assumptions.md](docs/11_assumptions.md)
 - [docs/12_engineering_decisions.md](docs/12_engineering_decisions.md)
+- [docs/13_integration_validation.md](docs/13_integration_validation.md)
+- [docs/14_system_validation.md](docs/14_system_validation.md)
+- [docs/15_engineering_audit.md](docs/15_engineering_audit.md)
 - [docs/requirements_traceability.md](docs/requirements_traceability.md)
 - [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
+
+## Post-merge corrective status
+
+The digital model now authorizes before remote transmission, tracks pending
+commands through matched execution ACKs and fresh actual-state evidence, drives
+real logical polling deadlines/retries, and strictly versions configuration.
+Protocol version **2** retains the 17 message types and adds actor assertions,
+response correlation, configuration readback and observation metadata. It is
+not wire-compatible with the earlier prototype version 1.
+
+The complete corrective findings, test inventory, Phase 14 fault-injection
+results and remaining limitations are in
+[docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md). Requirement
+status is no longer inferred merely from an existing module and passing test.
+The Phase 15 Master Control Center is an in-memory data/orchestration layer over
+the existing controllers (no GUI, no persistence, no production backend); it
+does not close the PARTIAL rows.
+
+Phase 16 integrates those layers end to end (`tests/test_integration.py`, 38
+tests; harness `tests/mcc_harness.py`): authorized commands reach the addressed
+lamp and are only verified against observed state, faults reach the operator
+layer through the existing lifecycle, records buffered during an upstream
+outage are recovered, uploaded once and confirmed, restarts keep what the
+architecture promises to persist and the MCC reconstructs its view from the
+controllers, multi-group/multi-site identities stay isolated, and a
+digital/software-scale run of 2 sites x 2 groups x 16 lamps completes
+deterministically. Two defects were fixed (a wholly unreachable group was
+reported as only degraded; the Group Controller stamped `SYNCHRONIZED` without
+any verified synchronization). The integration also exposed a reporting limit:
+the `FAULT_REPORT` pull carries a single fault snapshot, so concurrent confirmed
+faults cannot both be propagated - `PR-FAULT-007` is now PARTIAL and the gap is
+documented in [docs/13_integration_validation.md](docs/13_integration_validation.md)
+rather than smoothed over. Structured remote configuration, automated
+repair-evidence comparison, production multi-group deployment, calibration
+storage and automatic GC-link fault workflow integration remain explicitly
+PARTIAL. This is a digital engineering
+prototype, not production firmware or physical validation. No open retention,
+storage-full, switching-feedback, RTC or security-policy decision is closed.

@@ -6,8 +6,10 @@ This document defines the **future data model** for Smart Street Light V1.
 
 It is a design artefact derived from the requirements in
 [02_product_requirements.md](02_product_requirements.md). It defines the
-*information* the system must carry; it does not define serialization,
-field widths, or storage layout (those belong to Phase 8 design).
+*information* the system must carry; it does not define serialization field
+widths or the physical storage layout (those belong to the hardware
+architecture / storage-medium phase, see
+[10_hardware_reference.md](10_hardware_reference.md)).
 
 Field types below are **indicative**. They describe the information content,
 not a concrete implementation type.
@@ -208,7 +210,7 @@ ACK_PENDING -> ESCALATED`.
 | `ENVIRONMENTAL_OR_EXTERNAL` | External or environmental condition indicated, actual cause not identifiable by the system. |
 | `INSUFFICIENT_EVIDENCE` | Evidence does not support a confident classification. |
 
-### 5.5 Notes
+### 5.7 Notes
 
 - `evidence` retains the measurement snapshot that supported the fault, so
   that verification can compare against the original condition
@@ -414,20 +416,38 @@ The detailed permission matrix is a later security/design task.
 
 ---
 
-## 11. Design status
+## 13. Design status
 
 | Item | Status |
 | --- | --- |
 | Field lists | Defined (information level) |
 | Value domains | Defined |
 | Serialization / wire format | Defined for the digital prototype (see `src/sslv1/comm/`) |
-| Physical storage layout | **Not defined** - hardware architecture phase |
-| Physical storage layout | **Not defined** - Phase 8 |
-| Master Control Center persistence | **Not defined** - Phase 15 |
+| Physical storage layout | **Not defined** - hardware architecture / storage-medium phase |
+| Master Control Center persistence | **None** - the Phase 15 layer keeps no store of its own; it reads the existing node/group records (`src/sslv1/mcc.py`) |
+
+### 13.1 Master Control Center derived views (Phase 15/16)
+
+The Master Control Center reports status through **derived read models**. None of
+them is stored: each is computed from what the Group Controller has actually
+reported, and the underlying stored state remains the node's and the
+controller's.
+
+| View field | Vocabulary | Meaning |
+| --- | --- | --- |
+| `availability` | `HEALTHY`, `DEGRADED`, `RECOVERING`, `UNAVAILABLE`, `UNKNOWN` | Whether the lamp can be supervised right now: link health first (`COMM_FAULT`/upstream loss -> `UNAVAILABLE`, other unhealthy link states -> `DEGRADED`, `RECOVERY` -> `RECOVERING`), then freshness (`UNKNOWN` when nothing is current) |
+| `freshness` | `FRESH`, `STALE`, `UNKNOWN` | Whether the reported value is still current relative to the configured `status_max_age_ticks`; a stale value is still shown, but never as current |
+| group / site `health` | `HEALTHY`, `DEGRADED`, `UNAVAILABLE`, `UNKNOWN` | Aggregate of the lamp views: all healthy and no active fault -> `HEALTHY`; every lamp unreachable -> `UNAVAILABLE`; every lamp never reported -> `UNKNOWN`; otherwise `DEGRADED` |
+
+`UNKNOWN` and `UNAVAILABLE` are deliberately distinct: "we have never had a
+current view" is not the same claim as "the lamp is unreachable". The aggregate
+rules and their tests are recorded in
+[13_integration_validation.md](13_integration_validation.md) and
+[14_system_validation.md](14_system_validation.md).
 
 ---
 
-## 12. Related documents
+## 14. Related documents
 
 - [01_system_architecture.md](01_system_architecture.md)
 - [02_product_requirements.md](02_product_requirements.md)
@@ -435,3 +455,23 @@ The detailed permission matrix is a later security/design task.
 - [05_communication_architecture.md](05_communication_architecture.md)
 - [06_storage_and_logging.md](06_storage_and_logging.md)
 - [07_configuration.md](07_configuration.md)
+- [13_integration_validation.md](13_integration_validation.md)
+- [14_system_validation.md](14_system_validation.md)
+
+## Corrective data-model clarifications
+
+CommandRecord now exposes pending lifecycle, transmitted/received/executed/
+acknowledged/verified timestamps and validated response evidence. RECEIVED in
+the GC means accepted at the controller; remote execution remains unproven
+until matched node evidence arrives. Repeated identical command IDs return the
+same record without execution; conflicting reuse is rejected and audited.
+
+Fault has retained confirmation evidence, latest_evidence, previous_fault_id
+for recurrence, and a notification_reason independent of confirmation_reason.
+Structured Event.actor is propagated by command, configuration, fault and
+deletion paths and by event reporting. Time validity and unavailable measurement
+values survive the bus rather than becoming synchronized zero-valued readings.
+
+Wire protocol version 2 adds correlation, actor assertions and verification/
+readback metadata within the existing message set; see
+[05_communication_architecture.md](05_communication_architecture.md).

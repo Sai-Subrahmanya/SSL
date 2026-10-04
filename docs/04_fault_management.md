@@ -414,7 +414,7 @@ Closure is auditable (`PR-SECURITY-003`).
 | --- | --- |
 | One node has a fault | Other nodes and the group continue normally. |
 | One node reports a fault storm | Contained at node/bus level; must not degrade other nodes. |
-| One node stops communicating | Reported as `COMMUNICATION` fault after policy; group continues. |
+| One node stops communicating | Tracked as link health (`COMM_FAULT`) with `COMM_STATE_CHANGED`/`COMM_FAULT_DETECTED` events and a `COMM_RECOVERED` event on return to health: the group continues. Conversion of link health into a managed per-lamp `FaultEngine` fault is **not implemented** (`PR-COMM-008` is PARTIAL; see the corrective note below). |
 | Group Controller unavailable | Nodes continue local fault handling autonomously. |
 | Sensor invalid on one node | Treated as a sensor problem on that node only. |
 
@@ -445,7 +445,7 @@ Closure is auditable (`PR-SECURITY-003`).
 | Fault model defined | Yes |
 | Fault lifecycle defined | Yes |
 | Confirmation parameters | Configurable - values not yet decided |
-| Implementation | **Not started** (Phase 6) |
+| Implementation | Digital lifecycle implemented; repair outcome is an authorized external input |
 
 ---
 
@@ -458,3 +458,54 @@ Closure is auditable (`PR-SECURITY-003`).
 - [07_configuration.md](07_configuration.md)
 - [08_testing_strategy.md](08_testing_strategy.md)
 - [09_digital_prototype_scope.md](09_digital_prototype_scope.md)
+
+## Corrective lifecycle integration
+
+Confirmation requires consecutive observations of the same classification
+inside the configured window. An intervening classification resets the other
+suspected counters, not confirmed/latched faults. Confirmed evidence is retained
+separately from latest observations. Recurrence has a new ID and a
+previous_fault_id link. Notification initialization occurs only once per fault;
+persistent abnormal observations do not reset reminders, escalation or retries.
+Notification reason does not overwrite fault confirmation reason.
+
+Operator-facing acknowledgement/repair/verification paths authorize before
+mutation. Illegal transitions emit FAULT_TRANSITION_REJECTED and still raise;
+legal repair-report and notification events have their own event types. Events
+retain actor, supplied logical timestamp and fault relationship, and every
+emitted fault event ID is linked back to the fault. No notification failure
+changes lighting or closes a fault.
+
+Repair verification currently accepts an **authorized externally supplied
+outcome and optional evidence**. It enforces lifecycle, preserves original
+evidence and records closure/failure; it does not independently establish a
+physical repair or automatically compare an arbitrary repair evidence schema.
+PR-FAULT-011 is PARTIAL for that reason. Likewise, GC communication health and
+fault events are implemented, but automatic conversion of every GC link fault
+into a fully managed per-lamp FaultEngine workflow remains an integration
+limitation (PR-COMM-008). These are not hardware-validation claims.
+
+---
+
+## Phase 16 boundary - fault reporting to the operator layer
+
+A confirmed fault is notified locally through the notification engine
+(`PR-FAULT-007`, `PR-FAULT-008`) and reaches the operator layer when the Group
+Controller polls it (`FAULT_REPORT`) and the Master Control Center derives its
+active-fault view from the records the group actually received.
+
+The poll carries **one active-fault snapshot** (`docs/05` section 5). `docs/03`
+allows a lamp to hold concurrent faults, so the digital model has an explicit
+boundary here:
+
+- with two confirmed faults on one lamp, only the reported snapshot identity is
+  propagated while it remains the snapshot;
+- a fault closed while a *different* fault is being reported is not recorded as
+  cleared at the group, so the MCC can keep listing it as active until the
+  reporting contract carries the whole active set.
+
+No inference was added at the Group Controller or MCC: recording a clear that
+was never observed would fabricate a fact, and dropping the older identity
+would hide a fault that may still be active. The limit is pinned by
+`tests/test_integration.py::test_concurrent_confirmed_faults_are_bounded_by_the_single_fault_report_pull`
+and bounds `PR-FAULT-007` to `PARTIAL` until a fault-set report exists.

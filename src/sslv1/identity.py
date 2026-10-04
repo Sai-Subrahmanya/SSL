@@ -153,6 +153,6 @@ class BusAddress:
 
 
 #: Broadcast address used for frames intended for every node on the bus.
-BROADCAST_ADDRESS = 0
+BROADCAST_ADDRESS = 0xFF
 #: Address conventionally used by the Group Controller (bus master).
 MASTER_ADDRESS = 0

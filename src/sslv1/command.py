@@ -40,12 +40,22 @@ class Command:
     priority: int = 0
 
     def __post_init__(self) -> None:
+        if not isinstance(self.command_type, CommandType):
+            raise CommandError("invalid command type")
+        if self.subtype is not None:
+            expected = {ControlSubtype.LAMP_ON: CommandType.FORCE_ON,
+                        ControlSubtype.LAMP_OFF: CommandType.FORCE_OFF,
+                        ControlSubtype.RETURN_TO_AUTO: CommandType.RETURN_TO_AUTO,
+                        ControlSubtype.SET_MODE: CommandType.SET_MODE,
+                        ControlSubtype.RESET_ENERGY: CommandType.SET_MODE}.get(self.subtype)
+            if expected is None or self.command_type is not expected:
+                raise CommandError("command type/subtype mismatch")
         if not self.command_id or not self.command_id.strip():
             raise CommandError("command_id must not be empty")
 
     @property
     def is_control_command(self) -> bool:
-        return self.command_type is CommandType.FORCE_ON or (
+        return self.command_type in (CommandType.FORCE_ON, CommandType.FORCE_OFF, CommandType.RETURN_TO_AUTO) or (
             self.command_type is CommandType.SET_MODE and self.subtype is not None
         )
 
@@ -61,6 +71,8 @@ class CommandRecord:
     acknowledged_ticks: Optional[int] = None
     verified_ticks: Optional[int] = None
     result: str = ""
+    transmitted_ticks: Optional[int] = None
+    evidence: Dict[str, object] = field(default_factory=dict)
     verification_reason: str = ""
 
     @property
@@ -128,7 +140,7 @@ class CommandLifecycle:
 #: Executes a command and returns ``(ok, reason)``.
 Executor = Callable[[Command], Tuple[bool, str]]
 #: Verifies the actual state after execution and returns ``(ok, reason)``.
-Verifier = Callable[[Command], Tuple[bool, str]]
+Verifier = Callable[[Command], Tuple[Optional[bool], str]]
 
 class CommandService:
     """Authorizes, executes and verifies commands with duplicate suppression."""
@@ -153,14 +165,24 @@ class CommandService:
     def get(self, command_id: str) -> Optional[CommandRecord]:
         return self._records.get(command_id)
 
-    def submit(self, command: Command, ticks: int) -> CommandRecord:
+    def submit(self, command: Command, ticks: int, pending: bool = False) -> CommandRecord:
         """Run a command through the full lifecycle.
 
         Returns the existing record without re-executing when ``command_id``
         has already been processed (``PR-CONTROL-003``).
         """
+        self._event_ticks = ticks
         existing = self._records.get(command.command_id)
         if existing is not None:
+            prior = existing.command
+            if (prior.command_type, prior.subtype, prior.target, prior.actor, prior.parameters) != (
+                    command.command_type, command.subtype, command.target, command.actor, command.parameters):
+                rejected = CommandRecord(command=command)
+                rejected.authorization_status = self._authorizer.authorize(command.actor, _action_for(command))
+                CommandLifecycle.transition(rejected, CommandState.REJECTED, ticks,
+                                            "command ID conflicts with an existing request")
+                self._emit("COMMAND_REJECTED", rejected, rejected.result)
+                return rejected
             self._emit("COMMAND_DUPLICATE", existing, "duplicate command id ignored")
             return existing
 
@@ -185,6 +207,9 @@ class CommandService:
         CommandLifecycle.transition(record, CommandState.RECEIVED, ticks, "received")
         self._emit("COMMAND_RECEIVED", record, "received")
 
+        if pending:
+            return record
+
         # execution
         ok, reason = self._executor(command)
         if not ok:
@@ -200,6 +225,8 @@ class CommandService:
 
         # actual-state verification
         verified, verify_reason = self._verifier(command)
+        if verified is None:
+            return record
         if not verified:
             CommandLifecycle.transition(record, CommandState.FAILED, ticks, verify_reason)
             self._emit(
@@ -211,6 +238,24 @@ class CommandService:
         )
         self._emit("COMMAND_VERIFIED", record, verify_reason)
         return record
+
+    def advance(self, record: CommandRecord, state: CommandState, ticks: int,
+                reason: str = "") -> None:
+        self._event_ticks = ticks
+        CommandLifecycle.transition(record, state, ticks, reason)
+        kind = {CommandState.FAILED: "COMMAND_VERIFICATION_FAILED",
+                CommandState.REJECTED: "COMMAND_REJECTED",
+                CommandState.ACTUAL_STATE_VERIFIED: "COMMAND_VERIFIED"}.get(
+                    state, "COMMAND_EXECUTED")
+        self._emit(kind, record, reason)
+
+    def verify_pending(self, ticks: int) -> None:
+        for record in self.records:
+            if record.state is CommandState.ACKNOWLEDGED:
+                ok, reason = self._verifier(record.command)
+                if ok is not None:
+                    self.advance(record, CommandState.ACTUAL_STATE_VERIFIED if ok
+                                 else CommandState.FAILED, ticks, reason)
 
     def _emit(self, kind: str, record: CommandRecord, reason: str) -> None:
         if self._on_event is not None:
@@ -235,6 +280,10 @@ def _action_for(command: Command):
         CommandType.CLOSE_FAULT: Action.CLOSE_FAULT,
         CommandType.HEARTBEAT: Action.VIEW_STATUS,
     }
-    if command.subtype is ControlSubtype.RESET_ENERGY:
-        return Action.RESET_ENERGY
+    if command.subtype is not None:
+        return {ControlSubtype.RESET_ENERGY: Action.RESET_ENERGY,
+                ControlSubtype.SET_MODE: Action.CONFIGURE,
+                ControlSubtype.LAMP_ON: Action.CONTROL_LAMP,
+                ControlSubtype.LAMP_OFF: Action.CONTROL_LAMP,
+                ControlSubtype.RETURN_TO_AUTO: Action.CONTROL_LAMP}[command.subtype]
     return mapping[command.command_type]
