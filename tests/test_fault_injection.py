@@ -1,4 +1,4 @@
-"""Phase 14 - deterministic fault injection and system-level digital validation.
+"""Deterministic fault injection and system-level digital validation.
 
 Every test in this module injects a defined fault (or a defined sequence of
 faults) into the digital model, asserts the state *before* the injection, then
@@ -8,7 +8,7 @@ unaffected. Nothing here is a physical test: the module validates the digital
 prototype only and makes no claim about electrical safety, EMC/RF behaviour or
 hardware performance.
 
-Coverage follows the Phase 14 scope:
+Coverage:
 
 1. lighting and sensor faults,
 2. electrical measurement faults,
@@ -28,11 +28,9 @@ Coverage follows the Phase 14 scope:
 11. store-and-forward failure sequences while the upstream link is gone,
 12. the end-to-end scenarios A-J.
 
-The harness lives in ``tests/fault_injection.py``. Traceability for every
-scenario is recorded in ``docs/requirements_traceability.md`` section 7. The
-scenarios in this module did not introduce product requirements; the defects
-and open decisions they exposed are recorded in ``docs/09_digital_prototype_scope.md``
-and ``docs/IMPLEMENTATION_REPORT.md``.
+The harness lives in ``tests/fault_injection.py``. The scenarios in this
+module introduce no product requirements; every one of them exercises
+behaviour that the requirement set and the design documents already describe.
 """
 
 from __future__ import annotations
@@ -1044,17 +1042,18 @@ def test_command_failure_on_one_node_does_not_block_the_others():
     assert sim.comm_state(sim.node_for(1)) is CommState.COMM_HEALTHY
 
 
-def test_command_deadline_shorter_than_a_measurement_cycle_is_an_open_decision():
+def test_command_deadline_shorter_than_a_measurement_cycle_cannot_verify():
     """Pin the documented consequence of a deadline below one measurement cycle.
 
-    Phase 14 finding OPEN-14-02: nothing in ``LampConfiguration.validate()``
-    relates ``comm_timeout_ticks * (comm_retry_count + 1)`` to
+    Nothing in ``LampConfiguration.validate()`` relates
+    ``comm_timeout_ticks * (comm_retry_count + 1)`` to
     ``measurement_interval_ticks``. A configuration whose absolute command
     deadline is shorter than one local measurement cycle therefore executes the
     action but can never verify it, so every physical ON/OFF command ends
-    FAILED. Whether the configuration must be rejected or the deadline derived
-    is an open engineering decision; this test pins the current behaviour so a
-    future decision cannot change silently.
+    FAILED. Whether such a configuration must be rejected, or the deadline
+    derived from the measurement interval, is an open engineering decision
+    (``docs/validation.md`` section 6); this test pins the current behaviour so
+    a future decision cannot change silently.
     """
     sim = GroupSim(lamp_config_overrides={
         "measurement_interval_ticks": 5000,
@@ -1324,15 +1323,15 @@ def test_escalation_happens_at_the_configured_deadline_not_before():
 
 
 def test_delivery_failure_follows_the_configured_retry_path():
-    """Delivery failures retry, then rest in DELIVERY_FAILED (OPEN-14-03).
+    """Delivery failures retry, then rest in DELIVERY_FAILED.
 
-    Phase 14 finding OPEN-14-03: ``docs/04_fault_management.md`` section 8.3
-    documents that the notification "rests in DELIVERY_FAILED" after the
-    configured retry count, while its transition table lists
-    ``DELIVERY_FAILED -> ESCALATED`` as "retries exhausted". The engine
-    implements the section 8.3 wording; whether an undeliverable notification
-    must escalate is an open engineering decision. This test pins the current
-    behaviour, including the fact that the failure is always audited.
+    ``docs/system_behaviour.md`` section 4.3 documents that the notification
+    "rests in DELIVERY_FAILED" after the configured retry count, while its
+    transition table lists ``DELIVERY_FAILED -> ESCALATED`` as "retries
+    exhausted". The engine implements the section 4.3 wording; whether an
+    undeliverable notification must escalate is an open engineering decision
+    (``docs/validation.md`` section 6). This test pins the current behaviour,
+    including the fact that the failure is always audited.
     """
     sim = GroupSim()
     node = sim.node
@@ -1491,7 +1490,7 @@ def test_incomplete_record_is_refused_discarded_and_audited():
     assert complete.sequence_number in node.storage._records
     assert node.storage.is_full is False, "full state must not be sticky after recovery"
     # The store keeps its own audit log; the discard is recorded there with
-    # the record identity (see the Phase 14 storage-audit observation).
+    # the record identity.
     recovered = [e for e in node.storage.events
                  if e.event_type is EventType.RECORD_CORRUPT
                  and e.event_data.get("sequence_number") == partial.sequence_number]

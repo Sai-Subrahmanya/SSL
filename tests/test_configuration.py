@@ -92,7 +92,6 @@ def test_on_threshold_must_be_below_off_threshold(lamp_identity):
         config.validated()
 
 
-
 def test_hysteresis_wider_than_the_dead_band_is_rejected(lamp_identity):
     """The dead band is 50..150 (width 100); a 101-unit hysteresis cannot fit."""
     too_wide = make_lamp_config(lamp_identity.lamp_id, validate=False,
@@ -145,7 +144,6 @@ def test_an_all_day_window_is_always_on():
                         windows=(TimeWindow(0, DAY_TICKS),))
     assert all(schedule.is_on(tick)
                for tick in (0, 1, DAY_TICKS // 2, DAY_TICKS - 1))
-
 
 
 def test_reporting_interval_is_configurable(lamp_identity, clock, bus, authorizer):

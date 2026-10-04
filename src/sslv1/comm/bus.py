@@ -51,12 +51,6 @@ class InMemoryBus:
             raise ProtocolError("address %d is already attached to the bus" % address)
         self._endpoints[address] = endpoint
 
-    def detach(self, address: int) -> None:
-        self._endpoints.pop(address, None)
-
-    def is_attached(self, address: int) -> bool:
-        return address in self._endpoints
-
     # ------------------------------------------------------------------
     # fault injection
     # ------------------------------------------------------------------
@@ -108,10 +102,6 @@ class InMemoryBus:
         if destination not in self._endpoints:
             return []
         return [destination]
-
-    # ------------------------------------------------------------------
-    def reset_statistics(self) -> None:
-        self.stats = BusStatistics()
 
 
 def _decode(wire: bytes) -> Frame:

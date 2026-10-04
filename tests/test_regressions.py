@@ -1,4 +1,11 @@
-"""Post-merge counterexamples: real bus pumps, observations and deadlines."""
+"""Regression coverage: boundary conditions, real bus exchanges and deadlines.
+
+These tests pin behaviour that a defect once violated or that a boundary
+condition could silently reinterpret: remote-role authorization before
+transmission, response correlation, protocol metadata, retry deadlines, pull
+semantics for empty results and live-only readings, and record-envelope
+identity.
+"""
 from dataclasses import replace
 
 import pytest
@@ -878,8 +885,8 @@ def test_group_configuration_rejects_invalid_numeric_types(name, value):
 
 
 # --------------------------------------------------------------------------
-# Phase 14 regressions: pull semantics and live-only readings (production
-# defect fixes found by the fault-injection scenarios).
+# Regressions: pull semantics and live-only readings (behaviour restored by
+# the fault-injection scenarios).
 # --------------------------------------------------------------------------
 def test_empty_measurement_pull_is_answered_and_buffers_no_record(group_controller, lamp_node):
     """A node with nothing to report must still be a healthy exchange.

@@ -324,7 +324,8 @@ class GroupController:
         """Simulate a Group Controller restart / reinitialization.
 
         The documented digital persistence model is object retention across a
-        restart (``docs/09``): identity, configuration, registrations, replay
+        restart (``docs/validation.md`` section 4): identity, configuration,
+        registrations, replay
         history and the retained record store survive. What does **not**
         survive is transient transaction state, because a restarted device has
         no requests in flight:
@@ -576,7 +577,8 @@ class GroupController:
             if current_state is CommState.COMM_HEALTHY and previous_state in (
                     CommState.DEGRADED, CommState.RECOVERY):
                 # The documented event vocabulary has COMM_RECOVERED
-                # (``docs/03``) and a link that returns from degradation or a
+                # (``docs/architecture.md`` section 6) and a link that returns from
+                # degradation or a
                 # communication fault is exactly that fact. Without it the
                 # recovery is invisible to every upstream layer, which would
                 # see the degradation but never its end.
@@ -672,7 +674,7 @@ class GroupController:
         registration.last_measurement = measurement
         if not record_sequence:
             # A response without a stored-record identity is a live-only reading
-            # (``docs/05``, revision 2 contract: "zero for live-only readings").
+            # (``docs/architecture.md`` section 7.4: "zero for live-only readings").
             # It refreshes the live view but must never be buffered as a new
             # historical record, otherwise every idle poll would duplicate the
             # last measurement into the group store and upload it again.

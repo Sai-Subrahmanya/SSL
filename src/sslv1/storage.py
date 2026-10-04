@@ -251,14 +251,6 @@ class RecordStore:
         record.lifecycle_state = RecordLifecycleState.RETAINED
         return record
 
-    def upload_confirmed(self, sequence_number: int) -> StorageRecord:
-        """Alias kept for readability at call sites."""
-        return self.mark_confirmed(sequence_number)
-
-    def next_pending(self) -> Optional[StorageRecord]:
-        pending = self.pending_upload
-        return pending[0] if pending else None
-
     # ------------------------------------------------------------------
     # integrity / corruption
     # ------------------------------------------------------------------

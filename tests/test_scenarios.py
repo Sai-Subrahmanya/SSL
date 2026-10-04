@@ -1,8 +1,8 @@
-"""Enumerated end-to-end scenarios (Part S of the Phase 1 task).
+"""Enumerated end-to-end scenarios built from the public domain API.
 
 Each test is a deterministic, hardware-independent scenario built from the
 public domain API. The docstrings name the scenario and the requirement it
-covers so the traceability table can cite real test evidence.
+covers.
 """
 
 
@@ -64,11 +64,6 @@ def engineer():
 @pytest.fixture
 def admin():
     return Actor("admin-01", Role.ADMIN)
-
-
-@pytest.fixture
-def owner():
-    return Actor("owner-01", Role.OWNER)
 
 
 # ==========================================================================

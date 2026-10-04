@@ -1,7 +1,7 @@
 """Event model and the audit trail.
 
 Every important state transition produces an event carrying enough context
-for an audit trail (``PR-SEC-003`` / ``PR-SECURITY-003``).
+for an audit trail (``PR-SECURITY-003``).
 
 Events are append-only and are never mutated or deleted by the domain layer.
 """
@@ -9,7 +9,7 @@ Events are append-only and are never mutated or deleted by the domain layer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterator, List, Mapping, Optional, Tuple
+from typing import Iterator, List, Mapping, Optional, Tuple
 
 from .enums import (
     EventSeverity,
@@ -130,9 +130,3 @@ class EventLog:
                 continue
             result.append(event)
         return tuple(result)
-
-    def counts_by_type(self) -> Dict[EventType, int]:
-        counts: Dict[EventType, int] = {}
-        for event in self._events:
-            counts[event.event_type] = counts.get(event.event_type, 0) + 1
-        return counts

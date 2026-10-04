@@ -519,12 +519,11 @@ def test_related_event_ids_are_not_duplicated(lamp_node):
 # Regression: a fault left unacknowledged past the reminder interval but
 # before the escalation timeout made NotificationEngine.tick() re-enter
 # REMINDER_DUE, which the state machine forbids. LampNode.step() calls tick()
-# for every active confirmed fault on every cycle, so the run crashed with
-# IllegalTransitionError. The suite passed because no test stepped far enough
-# past the reminder interval without acknowledging or escalating.
+# for every active confirmed fault on every cycle, so any run that crossed the
+# reminder interval without acknowledging raised IllegalTransitionError.
 # --------------------------------------------------------------------------
 def test_notification_reminder_is_idempotent(lamp_node):
-    """Stepping repeatedly inside the reminder window must not crash."""
+    """Repeated stepping inside the reminder window stays in REMINDER_DUE."""
     for index in range(6):
         lamp_node.step(
             healthy_sources(current=0.0, power=0.0, light_level=10.0,
@@ -535,7 +534,7 @@ def test_notification_reminder_is_idempotent(lamp_node):
     assert fault.notification_state.value == "ACK_PENDING"
 
     # Cross the reminder interval, then keep stepping well inside the
-    # escalation window. Every one of these used to raise.
+    # escalation window. Every one of these steps previously raised.
     for ticks in range(40_000, 120_000, 5_000):
         lamp_node.step(healthy_sources(light_level=10.0), ticks=ticks)
 
@@ -563,8 +562,8 @@ def test_notification_reminder_does_not_spam_events(lamp_node):
     assert len(reminders) == 1, "reminder emitted %d times" % len(reminders)
 
 
-def test_notification_escalates_after_timeout_without_crash(lamp_node):
-    """A long unacknowledged run must escalate, not crash."""
+def test_notification_escalates_after_the_acknowledgement_timeout(lamp_node):
+    """A long unacknowledged run escalates while the fault and lamp stay put."""
     for index in range(6):
         lamp_node.step(
             healthy_sources(current=0.0, power=0.0, light_level=10.0,
@@ -611,20 +610,18 @@ def test_notification_tick_is_legal_from_every_resting_state(lamp_node):
 # --------------------------------------------------------------------------
 # Notification delivery-failure handling
 #
-# Regression: delivery_failed() unconditionally transitioned the fault to
-# DELIVERY_FAILED. Once the configured retry limit was exhausted the fault
+# Regression: delivery_failed() transitioned the fault to DELIVERY_FAILED
+# unconditionally. Once the configured retry limit was exhausted the fault
 # rested in DELIVERY_FAILED, so the next call attempted
-# DELIVERY_FAILED -> DELIVERY_FAILED, which the state machine forbids, and
-# raised IllegalTransitionError. A retry loop that keeps reporting failures
-# crashed on the first call past the limit.
+# DELIVERY_FAILED -> DELIVERY_FAILED, which the state machine forbids and which
+# raised IllegalTransitionError on the first attempt past the limit.
 #
-# The same class of defect existed in notify(): it listed REMINDER_DUE,
-# ESCALATED and DELIVERY_FAILED as sources for SENT, none of which the state
-# machine permits. SENT is reachable only from PENDING, and delivery_failed()
-# routes retries through PENDING, so notify() now only sends from PENDING.
+# notify() must send only from PENDING: REMINDER_DUE, ESCALATED and
+# DELIVERY_FAILED are not legal sources for SENT, and delivery_failed() routes
+# retries back through PENDING.
 # --------------------------------------------------------------------------
-def test_delivery_failure_beyond_retry_limit_does_not_crash(lamp_node):
-    """Reporting delivery failures past the retry limit must not raise."""
+def test_repeated_delivery_failure_beyond_the_retry_limit_is_audited(lamp_node):
+    """Failures past the retry limit stay audited and leave the fault active."""
     for index in range(6):
         lamp_node.step(
             healthy_sources(current=0.0, power=0.0, light_level=10.0,
@@ -669,7 +666,7 @@ def test_delivery_failure_retry_path_still_returns_to_pending(lamp_node):
     assert fault.notification_state is NotificationState.ACK_PENDING
 
 
-def test_notify_from_any_waiting_state_does_not_crash(lamp_node):
+def test_notify_from_any_waiting_state_never_makes_an_illegal_transition(lamp_node):
     """notify() must not attempt an illegal transition to SENT."""
     from sslv1.enums import NotificationState as NS
 
@@ -692,13 +689,13 @@ def test_notify_from_any_waiting_state_does_not_crash(lamp_node):
 def test_environmental_observation_never_becomes_a_confirmed_fault(lamp_node):
     """The normal bright-ambient OFF state raises no managed fault.
 
-    Regression (Phase 14): the "lamp commanded off, no current, bright
+    Regression: the "lamp commanded off, no current, bright
     ambient" observation is classified ``ENVIRONMENTAL_OR_EXTERNAL`` — an
     external-illumination observation, explicitly *not* a lamp fault — but the
     fault engine used to confirm it after the configured observation count and
     notify, so every daylight period produced a confirmed fault and a
-    notification. ``docs/04`` section 4 defines the ``ENVIRONMENTAL`` category
-    as a condition *outside* the expected range and assumption ``A-21`` leaves
+    notification. ``docs/system_behaviour.md`` section 4 records the
+    ``ENVIRONMENTAL`` category, and assumption ``A-21`` leaves
     its triggering environmental inputs open, so the observation is retained in
     the diagnostic result and raises no fault.
     """

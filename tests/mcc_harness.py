@@ -1,4 +1,4 @@
-"""Deterministic multi-site, multi-group harness for the Phase 15 MCC tests.
+"""Deterministic multi-site, multi-group harness for the Master Control Center tests.
 
 Builds a complete digital system under one Master Control Center::
 
@@ -37,7 +37,7 @@ from sslv1.nodes import (
 )
 from sslv1.time_model import LogicalClock
 
-#: Logical ticks per second used by every Phase 15 scenario.
+#: Logical ticks per second used by every scenario in this harness.
 TICKS_PER_SECOND = 1000
 
 #: A 16-lamp group, the documented initial target (``PR-SCALABILITY-001``).
@@ -92,8 +92,9 @@ class MccSim:
         self._silent: Dict[Tuple[Identifier, Identifier, Identifier], bool] = {}
         #: Builds the upstream link of one group, called as
         #: ``factory(mcc, site, group)`` while the groups are being built. The
-        #: default is the injectable Phase 14 link; the Phase 16 integration
-        #: tests pass ``lambda mcc, site, group: MccUpstreamLink(...)`` so the
+        #: default is the injectable link from :mod:`fault_injection`; the
+        #: integration tests pass
+        #: ``lambda mcc, site, group: MccUpstreamLink(...)`` instead, so the
         #: MCC itself is the other end of every upload.
         self._upstream_factory = upstream_factory
 
@@ -295,17 +296,6 @@ class MccSim:
     ) -> Dict[str, int]:
         """Simulate a Group Controller restart (transient state only)."""
         return self.gc(site, group).restart(ticks)
-
-    def restart_lamp(
-        self, site: Identifier, group: Identifier, lamp, ticks: Optional[int] = None
-    ) -> None:
-        """Simulate a Lamp Node watchdog restart."""
-        self.node(site, group, lamp).restart(ticks)
-
-    def expire(self, site: Identifier, group: Identifier, ticks: int) -> None:
-        """Advance time and let the group controller service its timeouts."""
-        self.advance(ticks)
-        self.gc(site, group).service_timeouts()
 
     def _selected(self, site: Optional[Identifier], group: Optional[Identifier]):
         keys = sorted(self._controllers)

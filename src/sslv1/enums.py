@@ -4,7 +4,8 @@ Every enum here is a *domain* concept. No enum encodes a hardware-specific
 detail: the domain layer must remain usable behind a later hardware
 abstraction layer without modification.
 
-See ``docs/03_data_model.md`` for the authoritative field/value documentation.
+See ``docs/architecture.md`` section 6 for the authoritative field/value
+documentation.
 """
 
 from __future__ import annotations
@@ -403,7 +404,7 @@ class EventType(StrEnum):
 
 
 # --------------------------------------------------------------------------
-# Master Control Center read model (Phase 15)
+# Master Control Center read model
 # --------------------------------------------------------------------------
 # These values describe how current the Master Control Center's *view* of the
 # system is. They are read-model vocabulary owned by the MCC data layer, not

@@ -53,11 +53,6 @@ class Command:
         if not self.command_id or not self.command_id.strip():
             raise CommandError("command_id must not be empty")
 
-    @property
-    def is_control_command(self) -> bool:
-        return self.command_type in (CommandType.FORCE_ON, CommandType.FORCE_OFF, CommandType.RETURN_TO_AUTO) or (
-            self.command_type is CommandType.SET_MODE and self.subtype is not None
-        )
 
 @dataclass
 class CommandRecord:

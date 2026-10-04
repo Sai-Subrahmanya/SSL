@@ -1,4 +1,4 @@
-"""Phase 16 - full digital integration of the V1 subsystems.
+"""Full digital integration of the V1 subsystems.
 
 Every test in this module drives the *whole* hierarchy in one deterministic
 system: Master Control Center over Group Controller over Lamp Nodes, with the
@@ -463,16 +463,18 @@ def test_fault_visibility_never_claims_a_fault_the_group_did_not_receive():
 def test_concurrent_confirmed_faults_are_bounded_by_the_single_fault_report_pull():
     """LIMITATION MARKER - the FAULT_REPORT pull carries one fault snapshot.
 
-    ``docs/05`` defines the fault poll as a single "active fault snapshot", and
-    ``docs/03`` records that a lamp may hold concurrent faults. This test *pins*
-    that boundary with the real classes so the gap cannot be silently assumed
-    away: it fails if the node starts holding more than one confirmed fault
-    without the reporting path carrying them, and it fails if the MCC starts
-    presenting a fault identity it was never told about. It also documents the
-    consequence that the operator view can stay stale (the closed fault is no
-    longer on the node but is still listed at the MCC) until the reporting
-    contract is extended - which is a later phase, because a fault-set pull
-    changes the wire payload, not a Phase 16 integration step.
+    ``docs/architecture.md`` section 7.5 defines the fault poll, and the
+    implemented ``FAULT_REPORT`` payload carries a single active-fault snapshot,
+    while a lamp may hold concurrent faults (``docs/architecture.md``
+    section 6.3). This test *pins* that
+    boundary with the real classes so the gap cannot be silently assumed away:
+    it fails if the node starts holding more than one confirmed fault without
+    the reporting path carrying them, and it fails if the MCC starts presenting
+    a fault identity it was never told about. It also documents the consequence
+    that the operator view can stay stale (the closed fault is no longer on the
+    node but is still listed at the MCC) until the reporting contract is
+    extended with a bounded fault-set report, which changes the wire payload and
+    is not implemented here (``docs/validation.md`` section 5).
     """
     sim = integrated(lamps_per_group=1, status_max_age_ticks=100_000)
     observe(sim)

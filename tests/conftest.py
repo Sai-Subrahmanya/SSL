@@ -59,11 +59,6 @@ def admin() -> Actor:
     return Actor(actor_id="admin-01", role=Role.ADMIN)
 
 
-@pytest.fixture
-def owner() -> Actor:
-    return Actor(actor_id="owner-01", role=Role.OWNER)
-
-
 def make_lamp_config(
     lamp_id: Identifier,
     bus_address: int = 1,

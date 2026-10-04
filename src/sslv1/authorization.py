@@ -8,8 +8,8 @@ Roles (``PR-SECURITY-006``, ``D-036``):
 * ``ADMIN``    - system, device and configuration administration
 * ``OWNER``    - highest organizational authority
 
-The detailed permission matrix is deliberately deferred to the security
-design phase (assumption ``A-27``). Authentication is represented abstractly:
+The detailed production permission matrix is deliberately left to the security
+design (assumption ``A-27``). Authentication is represented abstractly:
 this module answers "is this actor authorized for this action", never "is
 this actor who they claim to be".
 """
@@ -78,11 +78,6 @@ class Actor:
             from .errors import ValidationError
 
             raise ValidationError("actor_id must not be empty")
-
-
-def actions_for_role(role: Role) -> frozenset:
-    """Return the set of actions a role is permitted to perform."""
-    return _ROLE_ACTIONS[role]
 
 
 class AuthorizationService:

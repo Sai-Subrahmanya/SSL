@@ -1,4 +1,4 @@
-"""Master Control Center data layer tests (Phase 15).
+"""Master Control Center data layer tests.
 
 The MCC is the logical layer above the Group Controllers: a site -> group ->
 lamp registry plus aggregation over what the groups already report. These

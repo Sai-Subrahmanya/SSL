@@ -1,428 +1,487 @@
 # Smart Street Light V1
 
-## Repository status
+A monitoring and control system for street lighting: a **Master Control
+Center**, a **Group Controller** per group of lamps and a **Lamp Node** per
+lamp, connected over an RS-485 field bus. The system supervises and controls
+an external, existing street-light luminaire — it is not a luminaire, and it
+is not a mains or hardware product.
 
-### EARLY ENGINEERING / DIGITAL PROTOTYPE DEVELOPMENT
+This repository contains a **deterministic digital implementation of the
+system's logic, state machines, data flow and communication behaviour**,
+written in Python with no runtime dependencies. It exists to make the design
+reviewable and demonstrable before any physical prototype, and it deliberately
+implements no hardware.
 
-This repository contains engineering documentation and, in later phases, a
-**digital prototype** (simulation) of the Smart Street Light V1 system.
+## Overview
 
-It is **not** production firmware, **not** a certified product, and **not**
-fitness-approved for connection to mains voltage.
-
----
-
-## 1. Project title
-
-**Smart Street Light V1** (abbreviated **SSL V1**).
-
----
-
-## 2. Project purpose
-
-Smart Street Light V1 is a **smart street-light monitoring and control
-system** that interfaces with an *existing, external* street-light
-luminaire.
-
-Its purpose is to provide:
-
-- per-lamp ON/OFF control,
-- per-lamp measurement and monitoring,
-- expected-versus-actual diagnostics,
-- fault detection, confirmation, latching, acknowledgement and repair
-  workflow,
-- offline-capable local operation with store-and-forward communication,
-- group-level aggregation and reporting,
-- a scalable multi-lamp architecture that can be reviewed by an
-  engineering/manufacturing partner (for example Minewing) as the basis for
-  a physical prototype.
-
-The long-term engineering goal is a **digitally validated** system whose
-behaviour, state machines and failure handling have been demonstrated before
-any physical hardware exists.
-
----
-
-## 3. System boundary
-
-### 3.1 In boundary (what this product is)
-
-A smart street-light **monitoring and control system** attached to an
-external, already-existing street-light luminaire.
-
-### 3.2 Out of boundary (what this product is NOT, initially)
-
-- It is **not** a complete street-light luminaire.
-- It does **not** replace the lamp, driver, optics or luminaire enclosure.
-- It does **not** perform billing-grade energy metering.
-- It does **not** provide electrical safety, isolation, or protective
-  functions for the mains network.
-
-### 3.3 Architectural boundary of this repository
-
-The digital prototype validates **logic, state machines, data flow and
-communication behaviour**. It does not validate physical hardware.
-
----
-
-## 4. Architecture at a glance
+A street-lighting installation is organised into a hierarchy:
 
 ```text
-                MASTER CONTROL CENTER
-              (operator / control layer)
-                         |
-                         |  upstream link
-                         |
-                  GROUP CONTROLLER
-                 (RS-485 bus master)
-                         |
-                         |
-                      RS-485
-                         |
-   +---------------------+---------------------+
-   |                     |                     |
-LAMP NODE 1         LAMP NODE 2  ...      LAMP NODE N
-(one per lamp)
+MASTER CONTROL CENTER
+        |
+        |  upstream link
+        |
+GROUP CONTROLLER  (one per group, RS-485 master)
+        |
+        |  RS-485 field bus
+        |
+LAMP NODE 1 ... LAMP NODE N  (one per lamp)
+        |
+external street-lamp load  (existing luminaire, not part of this product)
 ```
 
-- Initial target: approximately **16 lamp nodes per group**.
-- The architecture must remain **scalable** (more nodes per group, more
-  groups per site).
-- The failure of one lamp node must **not** bring down the group.
+What the system does:
 
-For details see
-[docs/01_system_architecture.md](docs/01_system_architecture.md).
+* **Controls** each lamp according to a configured operating mode — automatic
+  sensor control, schedule-with-sensor control or fixed schedule — with
+  authorized manual override and deterministic priority resolution.
+* **Measures** voltage, current, power, energy and light level per lamp, with
+  explicit validity and plausibility handling.
+* **Diagnoses** expected-versus-actual behaviour from combined evidence and
+  manages faults through a full lifecycle: detection, confirmation, latching,
+  notification, escalation, acknowledgement, repair, verification and closure.
+* **Keeps working offline**: lighting control, measurement, logging and fault
+  handling continue without the internet, without the Master Control Center
+  and without the Group Controller.
+* **Buffers and replays** records produced during a communication outage and
+  delivers them upstream after recovery, without duplicates and without
+  claiming delivery that did not happen.
+* **Audits** every state change: commands, configuration, fault workflow and
+  record deletion all record their actor and reason.
 
----
+## System Architecture
 
-## 5. Operating modes
+The architecture has three software layers plus the bus between them. Each
+layer has a single clear responsibility; no layer re-implements the layer
+below it.
 
-### Persistent operating modes
-
-These are the modes that persist in configuration
-(`configured_automatic_mode`):
-
-| Mode | Description |
-| --- | --- |
-| `AUTO_SENSOR` | Automatic operation based on measured light level. |
-| `AUTO_SCHEDULE_SENSOR` | Configurable time window with sensor-based control. |
-| `FIXED_SCHEDULE` | ON/OFF according to configured times. |
-
-### Temporary manual override states
-
-These are **not** persistent operating modes. They are override states
-(`active_override`) that temporarily replace the configured automatic mode:
-
-| Override state | Description |
-| --- | --- |
-| `NONE` | No override is active; the configured automatic mode is in force. |
-| `FORCE_ON` | Authorized operator override holding the lamp ON. |
-| `FORCE_OFF` | Authorized operator override holding the lamp OFF. |
-
-### Operator command (not a mode)
-
-`RETURN_TO_AUTO` is **not** a persistent operating mode and **not** an
-override state. It is an operator command/action that clears the active
-forced override and returns control to the configured automatic mode.
-
-### Control model
-
-Three values are modelled separately:
-
-| Value | Meaning |
-| --- | --- |
-| `configured_mode` | The persistent automatic mode configured for the lamp. |
-| `active_override` | The active forced override, or `NONE`. |
-| `effective_mode` | The mode actually in force right now. |
-
-```text
-configured_mode = AUTO_SENSOR, active_override = NONE
-    -> effective_mode = AUTO_SENSOR
-
-configured_mode = AUTO_SENSOR, active_override = FORCE_ON
-    -> effective_mode = FORCE_ON
-
-RETURN_TO_AUTO: active_override = NONE
-    -> effective_mode = configured_mode
-```
-
-Priority order (highest first):
-
-```text
-1. Safety / hardware protection
-2. Authorized manual override
-3. Normal automatic mode
-4. Sensor / schedule logic
-```
-
----
-
-## 6. Planned development stages
-
-Development follows a controlled sequence. No stage is implemented before
-its requirements, architecture and design are documented.
-
-| Phase | Name | Status |
+| Layer | Element | Responsibility |
 | --- | --- | --- |
-| Phase 0 | Repository foundation | **Complete** |
-| Phase 1 | Core domain model | Implemented (bounded digital model) |
-| Phase 2 | Lamp Node | Implemented (bounded digital model) |
-| Phase 3 | Lighting control | Implemented (bounded digital model) |
-| Phase 4 | Measurement model | Implemented (bounded digital model) |
-| Phase 5 | Diagnostics | Implemented (bounded digital model) |
-| Phase 6 | Fault lifecycle | Implemented (bounded digital model) |
-| Phase 7 | Event / logging | Implemented (bounded digital model) |
-| Phase 8 | Persistent storage simulation | Implemented (bounded digital model) |
-| Phase 9 | RS-485 protocol | Implemented (bounded digital model) |
-| Phase 10 | Group Controller | Implemented (bounded digital model) |
-| Phase 11 | Communication failure / recovery | Implemented (bounded digital model) |
-| Phase 12 | Configuration | Implemented (bounded digital model) |
-| Phase 13 | Multi-node simulation | Implemented (bounded digital model) |
-| Phase 14 | Fault injection | Implemented (deterministic digital model) |
-| Phase 15 | Master Control Center data layer | Implemented (deterministic digital data layer) |
-| Phase 16 | Full integration | Implemented (deterministic digital integration) |
-| Phase 17 | System validation | Complete (validation report; no status changes) |
-| Phase 18 | Engineering audit | Complete (PASS WITH CONDITIONS; see docs/15_engineering_audit.md) |
+| Control layer | **Master Control Center** | Operator/control and data layer. Site → group → lamp registry and identity validation, derived status views, command forwarding, aggregation of reported records and faults, configuration readback, audit readback. Owns no persistence and no device logic. |
+| Group layer | **Group Controller** | RS-485 bus master for one group. Cyclic polling of status, measurements, faults and events; per-node communication and health state; configuration distribution and time synchronisation; command forwarding and correlation; local buffering and upstream store-and-forward with post-recovery re-synchronisation. |
+| Field layer | **Lamp Node** | Per-lamp control, override handling, measurement, sensor validity, diagnostics, fault lifecycle, notification, repair and verification, local event log, record storage and retention, and full local autonomy. |
+| Link layer | **RS-485 bus** | Deterministic wired master/slave communication. Nodes transmit only when addressed. |
+| Load | **External street-lamp load** | The existing luminaire, driver and enclosure. The system switches and monitors it; it is outside the product boundary. |
 
-The phase table indicates model availability, not full product completion.
-Eight requirements remain PARTIAL and three PLANNED. Passing tests or the mere
-existence of modules does not establish requirement verification. See
-[docs/requirements_traceability.md](docs/requirements_traceability.md) for bounded
-per-requirement evidence and [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
-for the corrective review and remaining scope. Physical validation is separate.
+Key structural rules, enforced by the implementation:
 
-See [docs/00_project_overview.md](docs/00_project_overview.md) for the full
-roadmap description.
+* one owner per concern — lamp control, diagnostics, fault and notification
+  lifecycle live in the Lamp Node; the Group Controller only forwards,
+  correlates and buffers; the Master Control Center decides nothing that is
+  already decided lower down;
+* a physical ON/OFF command is successful only when a fresh measurement shows
+  the expected state — transmission, receipt and acknowledgement are distinct
+  from verified state;
+* unknown values stay unknown — never reported as zero or as a default;
+* one node's failure, fault storm or communication loss never degrades the
+  rest of the group, and never switches a lamp off.
 
----
+Details: [docs/architecture.md](docs/architecture.md).
 
-## 7. Digital prototype scope
+## Key Features
 
-### 7.1 In scope
+Implemented and covered by tests (see
+[docs/requirements.md](docs/requirements.md) for the requirement set and its
+status):
 
-- control logic and state machines,
-- monitoring and measurement handling,
-- expected-versus-actual diagnostics,
-- fault detection, confirmation, latching, acknowledgement, repair and
-  verification,
-- communication behaviour, communication loss and recovery,
-- offline operation, local logging, store-and-forward,
-- configuration handling,
-- event history,
-- RS-485 protocol behaviour,
-- multi-lamp group behaviour,
-- failure containment,
-- deterministic fault injection and recovery behaviour.
+### Lighting control
 
-### 7.2 Out of scope
+* `AUTO_SENSOR`, `AUTO_SCHEDULE_SENSOR` and `FIXED_SCHEDULE` modes, with
+  hysteresis and dead-band retention.
+* `FORCE_ON` / `FORCE_OFF` overrides, and a `RETURN_TO_AUTO` command that
+  clears them; configured mode, active override and effective state are always
+  distinguishable.
+* Deterministic priority: protection (reserved), authorized override,
+  automatic mode, sensor/schedule logic.
+* Defined behaviour after a node or controller restart, including explicit
+  failure of pending commands.
 
-- mains electrical safety,
-- PCB safety and layout,
-- isolation, creepage and clearance,
-- EMC, surge and ESD,
-- relay lifetime,
-- LED inrush behaviour,
-- thermal performance of real hardware,
-- enclosure and IP rating,
-- actual RF performance,
-- certification.
+### Monitoring and diagnostics
 
-See [docs/09_digital_prototype_scope.md](docs/09_digital_prototype_scope.md).
+* Voltage, current, power, energy and light-level handling with per-value
+  validity, plausibility checks and a stable `None` for unavailable values.
+* Multi-evidence diagnostics (command state, switching feedback, voltage,
+  current, power, light level, sensor validity, communication and controller
+  state) — a single reading never becomes a lamp failure.
+* Engineering monitoring values only: no billing-grade or accuracy claim.
 
----
+### Fault management
 
-## 8. Physical validation boundary
+* Confirmation counts and windows, latching, recurrence with a new fault
+  identity, and separate fault category, diagnostic classification and
+  evidence.
+* Full lifecycle `NORMAL → SUSPECTED → CONFIRMED → ACKNOWLEDGED → UNDER_REPAIR
+  → VERIFYING → CLOSED`, with failed verification returning the fault to an
+  active state and illegal transitions rejected.
+* Independent notification state machine with reminders, escalation and
+  delivery failure; acknowledgement is an audit action that never closes a
+  fault, and notification failure never changes lighting.
 
-The intended workflow is:
+### Communication
 
-```text
-Digital engineering
-      -> internal validation
-      -> engineering package
-      -> Minewing engineering review
-      -> physical prototype
-      -> physical validation
-      -> iteration
-```
+* Versioned binary protocol (version 2) with framing, addressing, CRC-16
+  integrity, payload codecs, sequence tracking, duplicate and stale detection.
+* Communication state machine `COMM_HEALTHY → RETRY → DEGRADED → COMM_FAULT →
+  RECOVERY → COMM_HEALTHY`, with deadlines, retries and audit events.
 
-Nothing in this repository substitutes for physical engineering validation.
-Hardware components referenced anywhere in the documentation are
-**engineering candidates**, not production-frozen selections.
+### Storage and offline operation
 
----
+* Record envelope with commit semantics, corruption detection, retention
+  policy and authorized, audited deletion; automatic deletion is off by
+  default.
+* Store-and-forward across outages, single delivery of every record, and a
+  recovery step that reports exactly what was delivered and what is still
+  pending.
+* Full local autonomy without the internet, the Master Control Center or the
+  Group Controller.
 
-## 9. No-certification disclaimer
+### System-level
 
-> **No certification, safety approval, regulatory approval, or compliance
-> claim of any kind is made or implied by this repository.**
->
-> All content is early engineering documentation and/or digital prototype
-> work. Terms such as "validated" in this repository refer to **digital
-> validation of modelled behaviour only**, unless a document explicitly and
-> separately states otherwise.
+* Identity hierarchy (product → site → group → lamp → MCU), bus addressing,
+  duplicate detection and an `IDENTIFY` handshake.
+* Preliminary role-based authorization (viewer → owner) applied to every
+  state-changing path, with audit records for accepted and rejected actions.
+* Multi-group, multi-site aggregation with containment, exercised at
+  2 sites × 2 groups × 16 lamps.
 
----
+## Software Architecture
 
-## 10. Repository layout
+The code lives in `src/sslv1/`. Each concern has exactly one implementation.
+
+| Module | Responsibility |
+| --- | --- |
+| `enums.py` | Controlled vocabularies: modes, states, fault types and severities, event types, record types, roles, permissions, message types. |
+| `errors.py` | Domain exception types. |
+| `identity.py` | Product/site/group/lamp/MCU identity hierarchy, bus addressing, duplicate detection. |
+| `time_model.py` | Logical clock, timestamps, synchronisation state and validity. |
+| `authorization.py` | Roles, permissions and the authorization service used by every mutating path. |
+| `configuration.py` | Lamp configuration value object: modes, thresholds, hysteresis, schedules, intervals, fault, communication, notification and retention parameters, with validation. |
+| `control.py` | Operating modes, override handling, priority resolution and hysteresis. |
+| `command.py` | Command model, lifecycle (`CREATED → … → ACTUAL_STATE_VERIFIED`), duplicate suppression and command service. |
+| `measurement.py` | Measurement snapshot, validity assessment and energy accumulation. |
+| `diagnostics.py` | Evidence-based expected-versus-actual diagnostic rules. |
+| `fault.py` | Fault model, lifecycle state machine, confirmation, repair, verification and the fault engine. |
+| `notification.py` | Notification/escalation state machine and engine. |
+| `event.py` | Event model and event log (the audit trail). |
+| `storage.py` | Record envelope, commit semantics, retention, deletion and the record store. |
+| `mcc.py` | Master Control Center: registry, derived availability/freshness/health views, aggregation, configuration readback, upstream record intake and recovery orchestration. |
+| `comm/crc.py`, `comm/frame.py`, `comm/protocol.py` | Frame format, CRC-16/XMODEM, payload codecs and privileged-message actor validation. |
+| `comm/sequence.py`, `comm/state_machine.py`, `comm/bus.py` | Sequence window tracking, communication state machine and the in-memory bus used by tests. |
+| `nodes/lamp_node.py` | Lamp Node model: control, measurement, diagnostics, faults, notification, storage, commands, restart and autonomous operation. |
+| `nodes/group_controller.py` | Group Controller model: polling, retries and deadlines, aggregation, configuration distribution, time sync, buffering and upstream re-synchronisation. |
+
+## Repository Structure
 
 ```text
 .
-|-- README.md                                  This file
-|-- .markdownlint-cli2.jsonc                   Markdown lint configuration (docs only)
-|-- pyproject.toml                             Package and pytest configuration
-|-- src/sslv1/                                 Digital prototype domain model (Python)
-|   |-- enums.py                               Domain vocabulary
-|   |-- errors.py                               Domain error types
-|   |-- identity.py                             Identity hierarchy and bus addressing
-|   |-- time_model.py                           Logical time (no physical RTC)
-|   |-- authorization.py                        Roles and authorization
-|   |-- configuration.py                        Thresholds and schedules
-|   |-- control.py                              Control model and mode priority
-|   |-- command.py                              Command lifecycle
-|   |-- measurement.py                          Measurement model and validity
-|   |-- diagnostics.py                          Diagnostic evidence rules
-|   |-- fault.py                                Fault lifecycle and confirmation
-|   |-- notification.py                         Notification state (independent)
-|   |-- event.py                                 Audit events
-|   |-- storage.py                              Record lifecycle and retention
-|   |-- comm/                                   Frame, codecs, state machine, bus
-|   `-- nodes/                                  LampNode and GroupController
-|-- tests/                                      Deterministic test suite
+|-- README.md
+|-- pyproject.toml                    packaging, pytest configuration, dev extra
+|-- .gitignore
+|-- .markdownlint-cli2.jsonc          markdown lint configuration
+|-- src/
+|   `-- sslv1/
+|       |-- __init__.py
+|       |-- authorization.py
+|       |-- command.py
+|       |-- configuration.py
+|       |-- control.py
+|       |-- diagnostics.py
+|       |-- enums.py
+|       |-- errors.py
+|       |-- event.py
+|       |-- fault.py
+|       |-- identity.py
+|       |-- mcc.py
+|       |-- measurement.py
+|       |-- notification.py
+|       |-- storage.py
+|       |-- time_model.py
+|       |-- comm/
+|       |   |-- __init__.py
+|       |   |-- bus.py
+|       |   |-- crc.py
+|       |   |-- frame.py
+|       |   |-- protocol.py
+|       |   |-- sequence.py
+|       |   `-- state_machine.py
+|       `-- nodes/
+|           |-- __init__.py
+|           |-- group_controller.py
+|           `-- lamp_node.py
+|-- tests/
+|   |-- conftest.py                   shared fixtures
+|   |-- fault_injection.py            deterministic fault-injection helpers
+|   |-- mcc_harness.py                multi-site / multi-group harness
+|   |-- test_comm.py
+|   |-- test_command.py
+|   |-- test_configuration.py
+|   |-- test_control.py
+|   |-- test_diagnostics.py
+|   |-- test_fault.py
+|   |-- test_fault_injection.py
+|   |-- test_group_controller.py
+|   |-- test_identity.py
+|   |-- test_integration.py
+|   |-- test_mcc.py
+|   |-- test_measurement.py
+|   |-- test_regressions.py
+|   |-- test_scenarios.py
+|   |-- test_storage.py
+|   |-- test_time.py
+|   `-- test_validation.py
 `-- docs/
-    |-- 00_project_overview.md                 Purpose, scope, roadmap, glossary
-    |-- 01_system_architecture.md              Architecture baseline
-    |-- 02_product_requirements.md             Structured requirements (PR-*)
-    |-- 03_data_model.md                       Data model
-    |-- 04_fault_management.md                 Fault model and fault lifecycle
-    |-- 05_communication_architecture.md       RS-485 and communication state
-    |-- 06_storage_and_logging.md              Storage and logging behaviour
-    |-- 07_configuration.md                    Configuration model
-    |-- 08_testing_strategy.md                 Test and validation strategy
-    |-- 09_digital_prototype_scope.md          Digital prototype in/out of scope
-    |-- 10_hardware_reference.md               Hardware candidates (not final)
-    |-- 11_assumptions.md                      Assumptions register
-    |-- 12_engineering_decisions.md            Engineering decision log
-    |-- 13_integration_validation.md           Phase 16 full-integration validation and limits
-    |-- 14_system_validation.md                Phase 17 system validation (requirement audit)
-    |-- 15_engineering_audit.md                Phase 18 final engineering audit
-    |-- requirements_traceability.md           Requirement -> module -> test -> status
-    |-- review/                                Independent technical review records
-    `-- demo/                                  Demonstration material
+    |-- architecture.md
+    |-- system_behaviour.md
+    |-- requirements.md
+    |-- design_decisions.md
+    |-- validation.md
+    `-- hardware_reference.md
 ```
 
-### 10.1 Running the digital prototype tests
+## Requirements
+
+**Functional requirements** are listed with their implementation status in
+[docs/requirements.md](docs/requirements.md): 88 requirements in thirteen
+categories, each citing the test modules that cover it. Current status:
+77 implemented, 8 partial (documented subsets), 3 planned (physical or
+security properties this repository cannot implement or verify).
+
+Two areas are recorded as product-scope gaps rather than implemented:
+commissioning and node replacement (identity hierarchy, duplicate detection and
+the `IDENTIFY` handshake exist; rebinding a replacement node's MCU unique ID to
+an existing lamp identity is unspecified) and tamper detection (the `TAMPER`
+fault category and event vocabulary exist; no tamper source exists).
+
+### Runtime requirements
+
+* Python 3.9 or later.
+* No third-party runtime dependencies: the implementation uses the standard
+  library only.
+
+### Test requirements
+
+* pytest 7 or later (installed by the `dev` extra).
+
+## Installation
+
+The package is a standard `src`-layout Python project. From the repository
+root:
 
 ```bash
-python3 -m pytest
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+```
+
+This installs the `sslv1` package in editable mode together with pytest. The
+installation is optional for running the tests: the test configuration puts
+`src/` on the import path itself, so any interpreter that already has pytest
+can run the suite from the repository root without installing anything.
+
+## Running the System
+
+This repository is a model, not a service: it has no daemon, no server and no
+entry-point script, so there is nothing to start. The system is run by
+constructing the objects in a Python session or script, driving the logical
+clock and stepping the nodes. The smallest useful exercise builds one Group
+Controller with one Lamp Node, polls it and reads the result:
+
+```python
+from sslv1.comm import InMemoryBus
+from sslv1.configuration import LampConfiguration, Schedule, TimeWindow
+from sslv1.enums import LampState
+from sslv1.identity import BusAddress, DeviceIdentity, Identifier, McuUniqueId
+from sslv1.nodes import GroupController, GroupControllerConfig, LampNode, LampNodeSources
+from sslv1.time_model import LogicalClock
+
+DAY = 24 * 60 * 60 * 1000  # logical ticks per day
+
+clock = LogicalClock()
+bus = InMemoryBus()
+
+node = LampNode(
+    identity=DeviceIdentity(
+        product_id=Identifier("SSL-V1"),
+        site_id=Identifier("SITE-A"),
+        group_id=Identifier("GRP-01"),
+        lamp_id=Identifier("LAMP-01"),
+        mcu_unique_id=McuUniqueId(bytes.fromhex("0a0b0c0d")),
+    ),
+    bus_address=BusAddress(1),
+    config=LampConfiguration(
+        lamp_id=Identifier("LAMP-01"),
+        bus_address=BusAddress(1),
+        site_id=Identifier("SITE-A"),
+        group_id=Identifier("GRP-01"),
+        product_id=Identifier("SSL-V1"),
+        schedule=Schedule(day_length_ticks=DAY, windows=(TimeWindow(0, DAY - 1),)),
+    ),
+    clock=clock,
+)
+node.start(ticks=0)
+
+# Drive the lamp with sensor/electrical inputs for one interval.
+node.step(
+    LampNodeSources(
+        voltage=230.0,
+        current=0.45,
+        power=103.5,
+        light_level=10.0,
+        switching_feedback=LampState.ON,
+    ),
+    ticks=clock.ticks,
+)
+
+controller = GroupController(
+    identity=DeviceIdentity(
+        product_id=Identifier("SSL-V1"),
+        site_id=Identifier("SITE-A"),
+        group_id=Identifier("GRP-01"),
+    ),
+    config=GroupControllerConfig(max_nodes=16),
+    clock=clock,
+    bus=bus,
+)
+controller.register_node(node.lamp_id, node.bus_address)
+
+controller.poll()                        # the master sends the status request
+for frame in node.process_incoming():    # the node answers
+    bus.send(frame)
+controller.collect_responses()           # the master collects the response
+
+print("communication:", controller.communication_summary())
+print("lamp state   :", node.last_measurement.actual_state)
+```
+
+A complete lamp-control chain (command, execution, acknowledgement and
+verification) and an upstream cycle are exercised end to end in
+`tests/test_integration.py`, which is the best worked example of the intended
+usage; `tests/test_scenarios.py` contains smaller scenarios built from the
+public API. The Master Control Center is layered on top of a Group Controller
+in `tests/test_mcc.py`.
+
+Note that the model advances only when it is stepped: measurement sampling,
+scheduling, polling and time synchronisation are driven by the logical clock,
+and the upstream recovery step is invoked by the caller because the model has
+no background scheduler.
+
+## Running Tests
+
+```bash
+.venv/bin/python -m pytest
+```
+
+From an activated virtual environment, `python -m pytest` is equivalent. To run
+a subset:
+
+```bash
+.venv/bin/python -m pytest tests/test_control.py tests/test_fault.py
+.venv/bin/python -m pytest tests/test_integration.py
 ```
 
 The suite is deterministic: it uses an explicit logical clock, contains no
-randomness, reads no wall-clock time and touches no hardware. It requires
-only Python 3.9+ and pytest.
+randomness and no wall-clock or hardware dependencies.
 
----
+## Validation
 
-## 11. How this repository will evolve
+The suite drives the real model objects — Lamp Nodes, Group Controller, Master
+Control Center, and the command, fault, notification, storage and protocol
+components — with only the sensor inputs and the upstream link injected, and
+verifies:
 
-1. **Documentation first.** Requirements are written before architecture,
-   architecture before design, design before implementation.
-2. **Traceability.** Every future implementation element must be traceable
-   to at least one `PR-*` requirement.
-3. **Controlled phases.** Implementation proceeds phase by phase
-   (Phase 1 onward), each phase ending with test evidence and an audit
-   record.
-4. **Explicit assumptions.** Anything not yet decided is recorded in
-   [docs/11_assumptions.md](docs/11_assumptions.md) rather than silently
-   assumed.
-5. **Review.** Significant decisions are recorded in
-   [docs/12_engineering_decisions.md](docs/12_engineering_decisions.md) and
-   reviewed in [docs/review/](docs/review/).
+* **control**: every mode, override handling, priority, hysteresis, schedules
+  and restart state;
+* **commands**: the full lifecycle, duplicate suppression, authorization and
+  verification against observed state rather than acknowledgement;
+* **measurement and diagnostics**: validity, plausibility, energy accumulation
+  and every documented diagnostic rule;
+* **faults**: confirmation, latching, recurrence, notification/escalation,
+  acknowledgement, repair, verification, illegal transitions and containment
+  between nodes;
+* **communication**: framing, integrity, addressing, sequencing, duplicates,
+  staleness, retries, deadlines and the communication state machine;
+* **storage**: envelope and commit semantics, corruption, retention versus
+  upload confirmation, authorized deletion and power-loss recovery;
+* **offline operation**: autonomy, buffering, single-delivery replay and
+  interrupted recovery;
+* **integration**: end-to-end command routing, fault reporting to the operator
+  layer, configuration distribution and verification, restart and
+  reconstruction, group/site isolation, and a 2 sites × 2 groups × 16 lamps
+  run.
 
-The mandatory engineering sequence is:
+Committed fault-injection helpers (`tests/fault_injection.py`) drive
+deterministic sensor, electrical, switching, communication, command, fault,
+notification, storage and time conditions, including a simulated power loss at
+every point of a record write.
 
-```text
-REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALIDATION
-```
+All results are statements about the **model**. See
+[docs/validation.md](docs/validation.md) for what the suite establishes, the
+digital/physical boundary, and the open engineering items.
 
----
+## System Scope
 
-## 12. Current status summary
+This repository is a **digital/software implementation of the system's
+behaviour** — a prototype model intended for engineering review and
+demonstration. It is not:
 
-| Item | Status |
-| --- | --- |
-| Repository foundation | Complete |
-| Requirements baseline | Drafted for review (88 requirements) |
-| Architecture baseline | Drafted for review |
-| Assumptions register | Drafted for review (30 assumptions, 19 open) |
-| Engineering decision log | 44 decisions recorded (43 established, 1 proposed direction) |
-| Requirements traceability | Regenerated: See reconciled VERIFIED / PARTIAL / PLANNED counts in docs/requirements_traceability.md |
-| Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (645 tests, all passing), including the Phase 14 fault-injection scenarios, the Phase 15 MCC data-layer scenarios, the Phase 16 full-integration scenarios (`tests/test_integration.py`, 38 tests) and the Phase 17 system-validation evidence (`tests/test_system_validation.py`, 6 tests) |
-| Final engineering audit | Complete - verdict **PASS WITH CONDITIONS**; no production defect, no requirement status changed, hardware/product inputs identified (`docs/15_engineering_audit.md`) |
-| Physical validation | **Not started** - requires hardware |
+* production firmware or a released product;
+* a mains, electrical or hardware design: there is no schematic, PCB, BOM,
+  enclosure or harness;
+* a certified or certifiable implementation of any safety, EMC, RF or
+  electrical standard;
+* a field deployment, cloud service, database or web application;
+* a security solution: authorization is an asserted actor and role on a trusted
+  bus, without cryptography or authenticated transport.
 
-The audit's conditions are physical or partner inputs, not architectural
-defects: the undecided mains safety class, protective earth and isolation
-boundary (`A-30`), the open hardware inputs in
-[docs/10_hardware_reference.md](docs/10_hardware_reference.md) sections 4 to 8,
-and the proposed fault-set reporting contract (`D-044`). Preliminary
-enclosure/mechanical CAD can start from those requirements; PCB layout cannot
-be frozen until they are decided.
+Nothing in this repository validates physical behaviour. The model does not
+simulate mains safety, isolation, EMC, surge, ESD, relay endurance, LED-driver
+inrush, thermal performance, enclosure or IP rating, RF behaviour, measurement
+accuracy or production readiness. Those require a physical prototype and
+physical test facilities; the hardware-side inputs still needed are listed in
+[docs/hardware_reference.md](docs/hardware_reference.md).
 
-"Digital prototype" status means deterministic software behaviour has been
-implemented and tested. It does **not** mean that any physical property
-(electrical safety, EMC, RF, thermal, enclosure/IP, relay lifetime, RTC backup
-duration or certification) has been validated.
+## Limitations
 
----
+Current, genuine limitations of the implementation:
 
-## 13. Related documents
+* **Fault reporting is a single snapshot.** The upstream `FAULT_REPORT` poll
+  carries one active fault, so two concurrent confirmed faults on one lamp
+  cannot both be propagated, and a fault closed while another is being
+  reported is not recorded as cleared upstream. A bounded fault-set report is
+  the intended direction for a physical prototype; it is not implemented here.
+* **No automatic recovery trigger.** The post-recovery store-and-forward
+  sequence (`STORE → RECOVERY → SYNCHRONIZE → UPLOAD → CONFIRM`) is
+  implemented as one deterministic step, but a caller must invoke it: there is
+  no scheduler or daemon.
+* **Link failures are not converted into lamp faults.** A node that stops
+  communicating is tracked as link health with communication events; it is not
+  turned into a managed per-lamp fault record.
+* **Repair verification is externally supplied.** The `VERIFYING` state
+  compares against the retained evidence of the fault and enforces the
+  lifecycle, but the verification outcome comes from an authorized actor; it
+  is not derived from physical repair evidence.
+* **Remote configuration covers a subset.** `CONFIG_READ` / `CONFIG_WRITE`
+  handle an explicit integer-scalar subset (modes, thresholds, hysteresis,
+  intervals, confirmation policy, communication parameters, retention).
+  Structured schedules and the remaining parameters are set locally, and the
+  Master Control Center offers readback only.
+* **No compliance or metering claim.** Voltage, current, power, energy and
+  light level are engineering monitoring values; the model carries no
+  accuracy class and no billing-grade measurement.
+* **Security is preliminary.** Roles and permissions are modelled and enforced
+  on every mutating path, but authentication strength, key management and
+  replay protection are not implemented.
+* **Scale is software-only.** Multi-site behaviour is exercised with 2 sites ×
+  2 groups × 16 lamps in memory. Persistence, resource bounds and hardware
+  timing are unverified.
+* **Commissioning and tamper detection are unspecified.** See Requirements
+  above.
+* **Storage and retention are modelled, not physical.** Commit markers,
+  corruption handling and deletion are logical; flash programming, wear and
+  real power-failure windows are not simulated.
 
-- [docs/00_project_overview.md](docs/00_project_overview.md)
-- [docs/01_system_architecture.md](docs/01_system_architecture.md)
-- [docs/02_product_requirements.md](docs/02_product_requirements.md)
-- [docs/11_assumptions.md](docs/11_assumptions.md)
-- [docs/12_engineering_decisions.md](docs/12_engineering_decisions.md)
-- [docs/13_integration_validation.md](docs/13_integration_validation.md)
-- [docs/14_system_validation.md](docs/14_system_validation.md)
-- [docs/15_engineering_audit.md](docs/15_engineering_audit.md)
-- [docs/requirements_traceability.md](docs/requirements_traceability.md)
-- [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
+## License
 
-## Post-merge corrective status
-
-The digital model now authorizes before remote transmission, tracks pending
-commands through matched execution ACKs and fresh actual-state evidence, drives
-real logical polling deadlines/retries, and strictly versions configuration.
-Protocol version **2** retains the 17 message types and adds actor assertions,
-response correlation, configuration readback and observation metadata. It is
-not wire-compatible with the earlier prototype version 1.
-
-The complete corrective findings, test inventory, Phase 14 fault-injection
-results and remaining limitations are in
-[docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md). Requirement
-status is no longer inferred merely from an existing module and passing test.
-The Phase 15 Master Control Center is an in-memory data/orchestration layer over
-the existing controllers (no GUI, no persistence, no production backend); it
-does not close the PARTIAL rows.
-
-Phase 16 integrates those layers end to end (`tests/test_integration.py`, 38
-tests; harness `tests/mcc_harness.py`): authorized commands reach the addressed
-lamp and are only verified against observed state, faults reach the operator
-layer through the existing lifecycle, records buffered during an upstream
-outage are recovered, uploaded once and confirmed, restarts keep what the
-architecture promises to persist and the MCC reconstructs its view from the
-controllers, multi-group/multi-site identities stay isolated, and a
-digital/software-scale run of 2 sites x 2 groups x 16 lamps completes
-deterministically. Two defects were fixed (a wholly unreachable group was
-reported as only degraded; the Group Controller stamped `SYNCHRONIZED` without
-any verified synchronization). The integration also exposed a reporting limit:
-the `FAULT_REPORT` pull carries a single fault snapshot, so concurrent confirmed
-faults cannot both be propagated - `PR-FAULT-007` is now PARTIAL and the gap is
-documented in [docs/13_integration_validation.md](docs/13_integration_validation.md)
-rather than smoothed over. Structured remote configuration, automated
-repair-evidence comparison, production multi-group deployment, calibration
-storage and automatic GC-link fault workflow integration remain explicitly
-PARTIAL. This is a digital engineering
-prototype, not production firmware or physical validation. No open retention,
-storage-full, switching-feedback, RTC or security-policy decision is closed.
+This repository is an engineering prototype, and `pyproject.toml` declares the
+package as proprietary (`Proprietary - engineering prototype`). No open-source
+license is granted and no `LICENSE` file is included. Do not redistribute
+without the owner's permission.

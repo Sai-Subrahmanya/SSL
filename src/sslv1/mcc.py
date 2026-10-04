@@ -1,8 +1,8 @@
-"""Master Control Center data/orchestration layer (Phase 15).
+"""Master Control Center data/orchestration layer.
 
 The Master Control Center (MCC) is the logical operator/control layer *above*
-the Group Controllers (``D-001``, ``D-030``, ``docs/01`` section 6). This
-module implements its **data layer** for the digital prototype::
+the Group Controllers (``D-001``, ``D-030``; ``docs/architecture.md``
+section 2.3). This module implements its **data layer**::
 
     MCC
      +-- Site
@@ -30,12 +30,12 @@ storage or authorization, and it keeps no second copy of any of them. There is
 no MCC permission system: authorization stays in the existing services and the
 MCC adds no decision of its own.
 
-Phase 16 completes the **upstream end** of that architecture: the abstract
-upstream link of the Group Controller already uploads records, and
-:class:`MccUpstreamLink` makes the MCC the other end of it. The MCC accepts
-each record identity once (:meth:`MasterControlCenter.receive_upstream`), keeps
-them in arrival order - it adds no storage engine of its own, and what it holds
-is exactly what arrived - and can drive the documented post-recovery sequence
+The **upstream end** of that architecture is :class:`MccUpstreamLink`: the
+abstract upstream link of the Group Controller already uploads records, and
+this link makes the MCC the other end of it. The MCC accepts each record
+identity once (:meth:`MasterControlCenter.receive_upstream`), keeps them in
+arrival order - it adds no storage engine of its own, and what it holds is
+exactly what arrived - and can drive the documented post-recovery sequence
 through the controllers (:meth:`MasterControlCenter.recover_upstream`).
 
 Consequences stated rather than hidden:
@@ -49,11 +49,12 @@ Consequences stated rather than hidden:
   node-local evidence timestamps and no node-side fault-to-event linkage, so
   those stay at the node layer,
 * the freshness limit is a presentation limit of this data layer in logical
-  ticks, not a product threshold; no numeric value is frozen (``docs/09``),
+  ticks, not a product threshold; no numeric value is frozen
+  (``docs/validation.md`` section 4),
 * nothing here is a production MCC: no GUI (assumption ``A-24``), no
   persistence, no database, no network, no physical link. Physical
   communication, production security and multi-site deployment remain
-  unvalidated (``docs/09``).
+  unvalidated (``docs/validation.md`` section 4).
 """
 
 from __future__ import annotations
@@ -160,7 +161,8 @@ class MasterControlCenterConfig:
     ``status_max_age_ticks`` is the age beyond which an observation is no
     longer presented as current. It is a presentation limit of the data layer
     expressed in logical ticks, **not** a product threshold: no numeric value
-    is frozen (``docs/09``). When it is not configured, freshness is reported
+    is frozen (``docs/validation.md`` section 4). When it is not configured,
+    freshness is reported
     as ``UNKNOWN`` - an unconfigured limit is never reported as ``FRESH``.
     """
 
@@ -687,7 +689,7 @@ class MasterControlCenter:
         return dict(node_registration.configuration)
 
     # ------------------------------------------------------------------
-    # upstream: records the group controllers delivered (Phase 16)
+    # upstream: records the group controllers delivered
     # ------------------------------------------------------------------
     def receive_upstream(
         self, site: Identifier, group: Identifier, record: StorageRecord
@@ -707,7 +709,8 @@ class MasterControlCenter:
         silently vanishing.
 
         The record envelope carries ``device_id``, which for a group-level
-        device is the group id (``docs/03``): group ids are unique inside a
+        device is the group id (``docs/architecture.md`` section 6): group ids are
+        unique inside a
         site, not across sites, so the *site* is established by the link that
         delivered the record. Everything the record itself still states about
         its scope is checked here:

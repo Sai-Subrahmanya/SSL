@@ -13,7 +13,7 @@ storage faults use the documented store hooks. Every injection is counted so a
 test can prove the fault was actually applied instead of silently doing
 nothing.
 
-Phase 14 scope: this exercises the digital model only. It does not validate
+Scope: this exercises the digital model only. It does not validate
 electrical safety, EMC/RF behaviour, relay or surge performance, IP rating,
 mains wiring or physical RTC retention.
 """
@@ -45,7 +45,7 @@ from sslv1.nodes import (
 from sslv1.storage import StorageRecord
 from sslv1.time_model import LogicalClock
 
-#: Logical ticks per second used by every Phase 14 scenario.
+#: Logical ticks per second used by every injected scenario.
 TICKS_PER_SECOND = 1000
 
 OPERATOR = Actor("operator-01", Role.OPERATOR)

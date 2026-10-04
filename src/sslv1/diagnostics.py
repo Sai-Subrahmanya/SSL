@@ -13,7 +13,8 @@ The engine emits three distinct things (``PR-FAULT-014``, ``D-034``):
 * a **diagnostic classification** - the evidence-based interpretation,
 * a **confidence** - how strongly the evidence supports the classification.
 
-It never asserts a confirmed physical root cause. No AI/ML is used or implied.
+It never asserts a confirmed physical root cause: the rules are deterministic
+and evidence-based, with no learning or inference component.
 """
 
 from __future__ import annotations

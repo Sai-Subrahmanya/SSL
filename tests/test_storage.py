@@ -315,12 +315,12 @@ def test_retention_policy_never_auto_deletes_by_default():
     assert len(store.retained) == 1
 
 
-def test_storage_full_behaviour_is_a_simulation_detail_not_a_decision():
-    """A-09: the code's storage-full behaviour is not an engineering decision.
+def test_storage_full_raises_and_never_overwrites_evidence():
+    """The implemented storage-full behaviour never overwrites evidence.
 
-    The store raises StorageFullError and stops accepting records. That is the
-    simulation's implementation choice; the selection among the documented
-    candidates in docs/06 remains an open engineering decision (A-09).
+    The store raises ``StorageFullError`` and stops accepting records. Which of
+    the documented candidate behaviours the product adopts is an open
+    engineering decision (``A-09``, ``docs/validation.md`` section 6).
     """
     store = RecordStore(capacity=2)
     make_record(store, 1000)

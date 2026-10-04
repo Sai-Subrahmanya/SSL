@@ -1,14 +1,13 @@
-"""Phase 17 - system validation of the implemented V1 digital system.
+"""System-level validation of the implemented V1 digital system.
 
-This module is *validation*, not development. Each test exists because a
-requirement names **system validation (Phase 17)** as its verification method,
-or because the Phase 17 evidence audit found that a requirement marked
-`VERIFIED` was cited to evidence that does not actually demonstrate the claim.
+Each test in this module validates a property that a requirement states in its
+own words, across the whole hierarchy rather than one component at a time.
+Every test drives the existing subsystems (real ``LampNode``,
+``GroupController``, ``MasterControlCenter``, command, authorization, storage,
+fault, notification and time components); nothing is replaced by a stand-in and
+no new production behaviour is introduced here.
 
-There is no new production behavior here. Every test drives the existing
-subsystems (real ``LampNode``, ``GroupController``, ``MasterControlCenter``,
-command, authorization, storage, fault, notification and time components) and
-asserts a property that the requirement states in its own words:
+Covered properties:
 
 * PR-OFFLINE-001/002/003 and PR-COMM-009 - the field layer keeps functioning
   while no supervision layer is reachable at all, and the work it did is not
@@ -18,19 +17,18 @@ asserts a property that the requirement states in its own words:
 * PR-CONTROL-006 and PR-FAULT-009 - no fault condition, acknowledged or not,
   ever switches the lamp off or engages the (unused) protection hook.
 * PR-MEASURE-003 - energy accumulates proportionally and monotonically and
-  survives a restart; only an authorized reset clears it. (The traceability
-  audit found this row cited an authorization test only.)
+  survives a restart; only an authorized reset clears it.
 * PR-CONFIG-005 - an *applied* configuration and its version survive a
   restart, and the version really did persist rather than reset to zero.
 
-What each of these would detect in the real system: a hidden dependency of
+What each of these would detect in a real installation: a hidden dependency of
 lighting operation on supervision connectivity, silent record loss or a false
 delivery claim across a recovery outage, a fault path that darkens the street,
-an energy counter that resets on reset/restart, and a configuration that
-silently reverts to defaults.
+an energy counter that resets on restart, and a configuration that silently
+reverts to defaults.
 
 Digital-only boundary: as everywhere else in this repository these tests prove
-model behavior - logical clock, in-memory bus, modelled devices. They say
+model behaviour - logical clock, in-memory bus, modelled devices. They say
 nothing about mains, EMC, relay life, physical RTC retention or any other
 hardware property.
 """

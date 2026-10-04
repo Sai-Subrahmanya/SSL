@@ -140,9 +140,9 @@ class ConfirmationPolicy:
         )
 
 #: Classifications that describe an external/environmental observation rather
-#: than a lamp, node or communication fault. ``docs/04`` section 4 defines the
-#: ``ENVIRONMENTAL`` category as "environmental condition outside expected
-#: range", while assumption ``A-21`` leaves the triggering environmental inputs
+#: than a lamp, node or communication fault. ``docs/system_behaviour.md``
+#: section 4 defines the ``ENVIRONMENTAL`` category as "environmental condition
+#: outside expected range", while assumption ``A-21`` leaves its inputs
 #: undefined. A diagnostic result still carries this classification, but the
 #: fault engine must not turn it into a managed fault: otherwise the normal
 #: "lamp commanded off in bright ambient" state would raise a confirmed fault

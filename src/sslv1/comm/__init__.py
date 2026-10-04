@@ -2,7 +2,7 @@
 
 This is a **protocol/domain simulation layer**, not a physical RS-485 driver.
 It implements the architectural baseline from
-``docs/05_communication_architecture.md``:
+``docs/architecture.md`` section 7:
 
 * frame structure (SOF, protocol version, source, destination, message type,
   payload length, payload, sequence number, CRC),
@@ -34,7 +34,6 @@ from .protocol import (
     encode_payload,
 )
 from .state_machine import CommunicationStateMachine
-from ..enums import MessageType
 from .bus import BusEndpoint, InMemoryBus
 
 __all__ = [

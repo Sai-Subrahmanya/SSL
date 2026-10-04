@@ -10,7 +10,7 @@ time. A scenario chooses the ticks-per-second convention it wants.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 from .enums import (
@@ -300,10 +300,3 @@ class LampConfiguration:
                 % (self.lamp_id, "; ".join(errors))
             )
         return self
-
-    def with_mode(self, mode: ConfiguredMode) -> "LampConfiguration":
-        return replace(self, configured_mode=mode)
-
-    # -- derived helpers ---------------------------------------------------
-    def expected_current_band(self) -> Tuple[float, float]:
-        return (self.expected_current_min, self.over_current_max)
