@@ -601,6 +601,11 @@ def test_notification_tick_is_legal_from_every_resting_state(lamp_node):
         for elapsed in (0, 1, 30_000, 120_000, 500_000):
             engine._last_notified[fault.fault_id] = 0
             engine.tick(fault, ticks=elapsed)  # must not raise
+            # A tick may move the notification state; it must never move the
+            # fault lifecycle or leave the notification state undefined
+            # (``PR-FAULT-013``).
+            assert fault.state is FaultState.CONFIRMED
+            assert isinstance(fault.notification_state, NotificationState)
 
 
 # --------------------------------------------------------------------------

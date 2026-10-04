@@ -522,10 +522,22 @@ accuracy or backup retention, encryption/authentication, real RS-485 electrical
 behaviour and timing, certification, or production readiness. Simulated
 integration is not physical validation.
 
-## 18. Related documents
+## 18. Phase 17 re-audit of this document
+
+Phase 17 re-audited every claim in this document against the code and the tests
+([14_system_validation.md](14_system_validation.md)). The three production
+fixes, the `PR-FAULT-007` limitation and the integration evidence recorded here
+were all confirmed unchanged; Phase 17 added the system-validation evidence for
+the requirements that name it as their verification method and corrected four
+documentation-vs-code divergences (the two link-fault statements in `docs/04`
+and `docs/05`, the duplicate section numbering in `docs/03`, and the section
+numbering in `docs/04`).
+
+## 19. Related documents
 
 - [02_product_requirements.md](02_product_requirements.md)
 - [requirements_traceability.md](requirements_traceability.md)
 - [09_digital_prototype_scope.md](09_digital_prototype_scope.md)
 - [08_testing_strategy.md](08_testing_strategy.md)
+- [14_system_validation.md](14_system_validation.md)
 - [IMPLEMENTATION_REPORT.md](IMPLEMENTATION_REPORT.md)

@@ -181,7 +181,7 @@ its requirements, architecture and design are documented.
 | Phase 14 | Fault injection | Implemented (deterministic digital model) |
 | Phase 15 | Master Control Center data layer | Implemented (deterministic digital data layer) |
 | Phase 16 | Full integration | Implemented (deterministic digital integration) |
-| Phase 17 | System validation | Not started |
+| Phase 17 | System validation | Complete (validation report; no status changes) |
 | Phase 18 | Engineering audit | Not started |
 
 The phase table indicates model availability, not full product completion.
@@ -303,6 +303,7 @@ Hardware components referenced anywhere in the documentation are
     |-- 11_assumptions.md                      Assumptions register
     |-- 12_engineering_decisions.md            Engineering decision log
     |-- 13_integration_validation.md           Phase 16 full-integration validation and limits
+    |-- 14_system_validation.md                Phase 17 system validation (requirement audit)
     |-- requirements_traceability.md           Requirement -> module -> test -> status
     |-- review/                                Independent technical review records
     `-- demo/                                  Demonstration material
@@ -352,10 +353,10 @@ REQUIREMENT -> ARCHITECTURE -> DESIGN -> IMPLEMENTATION -> TEST -> AUDIT -> VALI
 | Requirements baseline | Drafted for review (88 requirements) |
 | Architecture baseline | Drafted for review |
 | Assumptions register | Drafted for review (29 assumptions, 18 open) |
-| Engineering decision log | 41 decisions recorded |
+| Engineering decision log | 43 decisions recorded |
 | Requirements traceability | Regenerated: See reconciled VERIFIED / PARTIAL / PLANNED counts in docs/requirements_traceability.md |
 | Domain model source | Implemented in `src/sslv1/` (digital prototype) |
-| Deterministic test suite | Implemented in `tests/` (639 tests, all passing), including the Phase 14 fault-injection scenarios, the Phase 15 MCC data-layer scenarios and the Phase 16 full-integration scenarios (`tests/test_integration.py`, 38 tests) |
+| Deterministic test suite | Implemented in `tests/` (645 tests, all passing), including the Phase 14 fault-injection scenarios, the Phase 15 MCC data-layer scenarios, the Phase 16 full-integration scenarios (`tests/test_integration.py`, 38 tests) and the Phase 17 system-validation evidence (`tests/test_system_validation.py`, 6 tests) |
 | Physical validation | **Not started** - requires hardware |
 
 "Digital prototype" status means deterministic software behaviour has been
@@ -373,6 +374,7 @@ duration or certification) has been validated.
 - [docs/11_assumptions.md](docs/11_assumptions.md)
 - [docs/12_engineering_decisions.md](docs/12_engineering_decisions.md)
 - [docs/13_integration_validation.md](docs/13_integration_validation.md)
+- [docs/14_system_validation.md](docs/14_system_validation.md)
 - [docs/requirements_traceability.md](docs/requirements_traceability.md)
 - [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md)
 

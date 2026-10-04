@@ -617,19 +617,49 @@ Each decision contains:
 
 ---
 
+### D-042 - Group Controller restart re-initializes transient state only
+
+| Field | Value |
+| --- | --- |
+| Decision ID | D-042 |
+| Date | 2026-10-04 |
+| Decision | A Group Controller restart keeps identity, configuration, registrations, the per-link replay window and the retained record store (including the pending upload queue). It clears state a restarted device cannot have: queued inbound frames, pending requests and their deadlines, volatile per-node views (last measurement, last status, last acknowledgement payloads, awaiting-response flags) and the evidence of a verified time synchronization. In-flight command transactions end `FAILED`. The restart is audited as `NODE_RESTARTED`/`WARNING` carrying `nodes`, `cleared_requests` and `failed_commands`. |
+| Reason | A restarted device has no requests in flight, so presenting a command as `ACKNOWLEDGED` and still awaiting evidence would be a false claim about a dead transaction. Conversely, discarding the retained store or the replay window would lose evidence and weaken replay detection - a restart must not make the system *less* safe. |
+| Alternatives | Reset everything (loses buffered evidence and breaks store-and-forward). Keep everything (presents pre-restart volatile data as current, and leaves dead transactions pending forever). |
+| Consequences | Restart behavior is deterministic and asserted by tests (`test_controller_restart_drops_transient_state_and_keeps_persistence`); the MCC shows `UNKNOWN` for healthy-comm lamps until a fresh poll, and `DEGRADED`/`UNAVAILABLE` where the link itself is unhealthy. This is digital object re-initialization: no flash retention, brown-out or MCU power-loss behavior is claimed (`docs/09`). |
+| Status | `Established` (implemented in Phase 16, recorded by the Phase 17 audit) |
+
+---
+
+### D-043 - MCC upstream record intake semantics
+
+| Field | Value |
+| --- | --- |
+| Decision ID | D-043 |
+| Date | 2026-10-04 |
+| Decision | The Master Control Center accepts an uploaded record only when it is valid, attributable to that group's controller, and consistent with the scope the record itself declares (`site_id`, `group_id`, and any `lamp_id` must match the delivering group). A record that was already received is answered `True` - the far end has it - but counted as a duplicate and stored once. A record it cannot attribute is refused (`False`) and stays pending at the sender. Received records are kept in arrival order, unchanged, and the MCC keeps no second record format. |
+| Reason | The sender's confirmation semantics are "the far end has it", so a re-sent record after a lost confirmation must not be reported as a failure; but a second copy must not corrupt or duplicate history either. And because group identities are unique only inside a site, a mis-delivered record must be refused rather than filed under the wrong site, group or lamp. |
+| Alternatives | Store every delivery (duplicates corrupt history). Refuse duplicates as failures (a lost confirmation would strand a delivered record). Trust the payload's own identity without the delivering link (cross-site contamination). |
+| Consequences | The intake is an append log in arrival order plus a duplicate counter; the MCC still owns no storage engine, no lifecycle and no second source of truth (`D-041`), and record identity is `(site, group, record type, sequence number)`. |
+| Status | `Established` (implemented in Phase 16, recorded by the Phase 17 audit) |
+
+---
+
 ## 5. Summary
 
 | Metric | Value |
 | --- | --- |
-| Total decisions recorded | 41 |
-| `Established` | 41 |
+| Total decisions recorded | 43 |
+| `Established` | 43 |
 | `Proposed` | 0 |
 | `Superseded` | 0 |
 
 No decisions beyond those established in the project direction have been
 invented in this log. Decisions D-031 to D-039 were introduced by review
 finding REVIEW-000 and are recorded in the review record; D-040 and D-041 were
-added by the Phase 14 and Phase 15 implementations respectively.
+added by the Phase 14 and Phase 15 implementations respectively; D-042 and
+D-043 record the Phase 16 restart and record-intake decisions, which the
+Phase 17 audit found implemented but not yet in this log.
 
 ---
 

@@ -1822,11 +1822,20 @@ Modelled behaviour is **digital validation only**.
 | Requirements drafted | Yes (88 requirements) |
 | Independent review | REVIEW-000 recorded as *approved with required corrective actions* - see [review/README.md](review/README.md) |
 | Traceability established | Yes - [requirements_traceability.md](requirements_traceability.md) |
-| Implementation | Phase 1 domain model implemented and tested |
+| Implementation | Phases 1-16 implemented and tested as a deterministic digital prototype |
+| System validation | Phase 17 complete - see [14_system_validation.md](14_system_validation.md): every requirement re-audited against code and tests; no status changed |
 
 Individual statuses are synchronized with the traceability matrix. VERIFIED
 means bounded digital behavior only; PARTIAL and PLANNED remain explicit.
 The requirements themselves are not weakened to fit the implementation.
+
+Phase 17 re-checked all 88 statuses against the implementation and the test
+evidence ([14_system_validation.md](14_system_validation.md)). No status
+changed: 77 `VERIFIED`, 8 `PARTIAL`, 3 `PLANNED`. Two `VERIFIED` rows
+(`PR-MEASURE-003`, `PR-CONFIG-005`) had evidence that did not demonstrate the
+claim and were given real evidence; two rows (`PR-IDENTITY-003`,
+`PR-IDENTITY-004`) cited tests that did not exist or did not exercise the
+requirement and were corrected.
 
 ---
 
@@ -1842,6 +1851,8 @@ The requirements themselves are not weakened to fit the implementation.
 - [08_testing_strategy.md](08_testing_strategy.md)
 - [11_assumptions.md](11_assumptions.md)
 - [12_engineering_decisions.md](12_engineering_decisions.md)
+- [13_integration_validation.md](13_integration_validation.md)
+- [14_system_validation.md](14_system_validation.md)
 - [requirements_traceability.md](requirements_traceability.md)
 
 ## Corrective verification scope (2026-09-26)

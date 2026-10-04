@@ -594,3 +594,55 @@ metering accuracy, enclosure/IP properties, physical RTC behaviour,
 cryptography/tamper resistance, real RS-485 electrical behaviour, certification
 or production readiness. The `PARTIAL` and `PLANNED` rows above bound every
 claim.
+
+---
+
+## 13. Phase 17 - system validation
+
+Phase 17 is a validation phase: it added no product behavior. The full report is
+[14_system_validation.md](14_system_validation.md); this section records what
+changed in the repository.
+
+### 13.1 What was audited
+
+All 88 requirements, every traceability citation (about 290 test references),
+the architecture for duplicated sources of truth, the fault lifecycle, the
+offline/recovery path, configuration, communication, storage, time, the security
+boundary, the scale evidence, the assumptions register and the decision log.
+The baseline suite was run before any edit (639 passed).
+
+### 13.2 Result
+
+| Item | Result |
+| --- | --- |
+| Requirement statuses | **Unchanged**: 77 `VERIFIED`, 8 `PARTIAL`, 3 `PLANNED` |
+| `VERIFIED` rows challenged | All 77; none found unsupported, none downgraded |
+| Evidence gaps closed | 2 (`PR-MEASURE-003` energy accumulation; `PR-CONFIG-005` applied configuration surviving a restart) - implemented behavior that had no test demonstrating it |
+| Wrong citations corrected | 2 (`PR-IDENTITY-003` cited a test that does not exist; `PR-IDENTITY-004` cited a test that does not exercise `IDENTIFY`) |
+| Thin citations widened | 3 (`PR-TIME-001`, `PR-STORAGE-001`, and the rows whose verification method is Phase 17) |
+| Production defects | **None found**; the three Phase 16 fixes re-verified and unchanged |
+| Documentation-vs-code divergences fixed | 4 (`docs/05` section 8 and `docs/04` section 13 claimed a link fault becomes a managed fault; `docs/03` duplicate section numbers and a duplicated status row; the MCC derived-view vocabulary was missing from the data model) |
+| Decisions recorded | 2 (`D-042` Group Controller restart persistence boundary, `D-043` MCC upstream record-intake semantics) - implemented in Phase 16 but absent from the log |
+| Assumptions resolved | None (none is resolvable by further digital validation) |
+| Tests added / modified | +6 in `tests/test_system_validation.py`; `test_integration.py` scale test gained per-lamp command routing; one assertion-free fault test given an invariant |
+
+### 13.3 Validation results
+
+| Check | Result |
+| --- | --- |
+| Baseline before Phase 17 (`cf4a8db`) | 639 passed; 38 integration tests |
+| `python3 -m pytest` (full suite) | **645 passed** |
+| `python3 -m pytest tests/test_integration.py` | 38 passed |
+| `python3 -m pytest tests/test_system_validation.py` | 6 passed |
+| `python3 -m compileall -q src tests` | exit 0 |
+| `pyflakes src/sslv1 tests/*.py` | 5 pre-existing findings, all in untouched `__init__.py` files; none from Phase 17 |
+| `npx markdownlint-cli2` | 0 issues |
+
+### 13.4 Boundaries
+
+Phase 17 changed tests and documentation only; `git diff` for the phase contains
+no production code. Everything proven remains digital: logical clock, in-memory
+bus, modelled devices, object-retention restarts. The exhaustive
+proven-digitally / requires-hardware split is
+[14_system_validation.md](14_system_validation.md) section 22, and it is the same
+boundary the earlier phases stated - no new claim, and no removed limitation.

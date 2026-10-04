@@ -414,7 +414,7 @@ Closure is auditable (`PR-SECURITY-003`).
 | --- | --- |
 | One node has a fault | Other nodes and the group continue normally. |
 | One node reports a fault storm | Contained at node/bus level; must not degrade other nodes. |
-| One node stops communicating | Reported as `COMMUNICATION` fault after policy; group continues. |
+| One node stops communicating | Tracked as link health (`COMM_FAULT`) with `COMM_STATE_CHANGED`/`COMM_FAULT_DETECTED` events and a `COMM_RECOVERED` event on return to health: the group continues. Conversion of link health into a managed per-lamp `FaultEngine` fault is **not implemented** (`PR-COMM-008` is PARTIAL; see the corrective note below). |
 | Group Controller unavailable | Nodes continue local fault handling autonomously. |
 | Sensor invalid on one node | Treated as a sensor problem on that node only. |
 
@@ -487,7 +487,7 @@ limitation (PR-COMM-008). These are not hardware-validation claims.
 
 ---
 
-## 12. Fault reporting to the operator layer (Phase 16 boundary)
+## Phase 16 boundary - fault reporting to the operator layer
 
 A confirmed fault is notified locally through the notification engine
 (`PR-FAULT-007`, `PR-FAULT-008`) and reaches the operator layer when the Group

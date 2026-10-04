@@ -1261,6 +1261,25 @@ def test_two_sites_of_two_sixteen_lamp_groups_operate_deterministically():
     assert sim.mcc.site_status(SITE_B).healthy_lamps == 32
     assert sim.mcc.site_status(SITE_B).health is AggregateHealth.HEALTHY
 
+    # Command routing at scale: one of the 64 lamps is addressed, and exactly
+    # that lamp changes - the other 63 keep their override state.
+    target = "LAMP-16"
+    record = sim.mcc.force_off(SITE_B, GRP2, target, OPERATOR, command_id="int-scale-route")
+    sim.pump(SITE_B, GRP2)
+    sim.gc(SITE_B, GRP2).collect_responses()
+    sim.step(SITE_B, GRP2, target, sources=off_sources(), ticks=sim.clock.ticks + 1)
+    sim.pump(SITE_B, GRP2)
+    sim.gc(SITE_B, GRP2).collect_responses()
+    assert record.state is CommandState.ACTUAL_STATE_VERIFIED, record.result
+    assert sim.node(SITE_B, GRP2, target).control.active_override is OverrideState.FORCE_OFF
+    for other_site in (SITE, SITE_B):
+        for other_group in (GRP1, GRP2):
+            for lamp in sim.lamp_ids(other_site, other_group):
+                if (other_site, other_group, str(lamp)) == (SITE_B, GRP2, target):
+                    continue
+                assert sim.node(other_site, other_group, lamp).control.active_override \
+                    is OverrideState.NONE, (other_site, other_group, lamp)
+
     # Determinism: the same cycle on an identical system yields identical state.
     twin = integrated(site_count=2, group_count=2, lamps_per_group=16,
                       status_max_age_ticks=100_000)

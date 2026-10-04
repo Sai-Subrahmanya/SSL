@@ -18,7 +18,7 @@ not itself introduce numbered requirements. Numbered requirements live in
 | --- | --- |
 | Project name | Smart Street Light V1 (SSL V1) |
 | Repository | `Sai-Subrahmanya/SSL` |
-| Current stage | Phases 1-16 complete as a deterministic digital prototype; Phase 17 onward not started |
+| Current stage | Phases 1-17 complete as a deterministic digital prototype (Phase 17 = system validation); Phase 18 onward not started |
 | Repository classification | Early engineering / digital prototype development |
 | Production status | Not production firmware |
 
@@ -330,7 +330,7 @@ Details in [04_fault_management.md](04_fault_management.md).
 | Phase 14 | Fault injection | Deterministic fault injection and recovery behaviour (digital model only). | Implemented (deterministic digital model) |
 | Phase 15 | Master Control Center data layer | Sites, groups, lamps, aggregation, history, no GUI in early phases. | Implemented (deterministic digital data layer) |
 | Phase 16 | Full integration | End-to-end integration of all layers (MCC -> Group Controller -> Lamp Nodes -> reporting -> MCC aggregation), offline/recovery, restart/reconstruction and digital-scale checks. | Implemented (deterministic digital integration) |
-| Phase 17 | System validation | Validation against requirements, test evidence, traceability closure. | Not started |
+| Phase 17 | System validation | Validation against requirements, test evidence, traceability closure. | Complete (validation report; no status changes) |
 | Phase 18 | Engineering audit | Independent audit, engineering package preparation for partner review. | Not started |
 
 Later phases are not implemented in advance. Each phase begins only after its
@@ -350,6 +350,16 @@ propagate concurrent confirmed faults; see
 Physical safety, EMC, RF, thermal/enclosure behavior, relay life and RTC backup
 remain unvalidated. The corrective implementation report defines the actual
 software evidence and remaining scope.
+
+Phase 17 then validated that matrix instead of extending it: every requirement
+was re-audited against the code and the tests, two citations that pointed at a
+non-existent or non-exercising test were corrected, two `VERIFIED` rows whose
+evidence did not demonstrate the claim were given real evidence
+(`PR-MEASURE-003`, `PR-CONFIG-005`), and the seven requirements whose
+verification method names Phase 17 are now exercised by
+`tests/test_system_validation.py`. No status changed and no production code
+changed; the report is
+[14_system_validation.md](14_system_validation.md).
 
 ---
 

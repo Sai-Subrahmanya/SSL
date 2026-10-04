@@ -234,8 +234,14 @@ COMM_HEALTHY -> RETRY -> DEGRADED -> COMM_FAULT -> RECOVERY -> COMM_HEALTHY
 | `RECOVERY` | Link re-established; re-synchronization in progress. |
 | `COMM_HEALTHY` | Normal operation restored. |
 
-`COMM_FAULT` produces a `COMMUNICATION` fault through the normal fault
-lifecycle ([04_fault_management.md](04_fault_management.md)).
+`COMM_FAULT` is reported as link health and audited with `COMM_STATE_CHANGED` /
+`COMM_FAULT_DETECTED` events, and its return to health emits `COMM_RECOVERED`.
+The domain model keeps the `COMMUNICATION` fault category
+([04_fault_management.md](04_fault_management.md)) for node-level communication
+faults, but the Group Controller does **not** yet convert a link fault into a
+managed per-lamp `FaultEngine` fault with its own lifecycle: that integration is
+missing, which is why `PR-COMM-008` is `PARTIAL`
+([requirements_traceability.md](requirements_traceability.md)).
 
 ---
 

@@ -113,7 +113,7 @@ Section 7.1 records the harness and the scope of that evidence.
 | Phase 14 - Fault injection | Deterministic injection matrix and recovery. | L2, L3 |
 | Phase 15 - Master Control Center data layer | Aggregation, history, audit. | L3 |
 | Phase 16 - Full integration | End-to-end behaviour. | L3 |
-| Phase 17 - System validation | Requirements coverage and evidence review. | L3, L4 |
+| Phase 17 - System validation | Requirements coverage and evidence review. | L3, L4 (complete: [14_system_validation.md](14_system_validation.md)) |
 | Phase 18 - Engineering audit | Traceability closure and over-claim review. | L4 |
 
 ---
@@ -167,7 +167,7 @@ Controller over Lamp Nodes) in one deterministic system:
 | Scenarios | `tests/test_integration.py` (38 tests: scenarios A-D, fault path, offline A-H, restart/reconstruction, multi-group/multi-site, communication, configuration, time/freshness, digital scale, negative/authorization) |
 | Determinism | One logical clock, no randomness, no wall-clock dependency in the assertions, no I/O |
 | Scope claim | Integrated modelled behaviour only; no hardware, serial-electrical, EMC/RF, RTC or production claim |
-| Tests | `python3 -m pytest tests/test_integration.py` (38) and the full suite (639) |
+| Tests | `python3 -m pytest tests/test_integration.py` (38) and the full suite (639 at the time; 645 after the Phase 17 evidence tests) |
 | Findings | Two production defects fixed (all-unavailable group aggregation; Group Controller time-synchronization claim) and one status change (`PR-FAULT-007` to PARTIAL, concurrent-fault pull limit) |
 
 The integration tests assert what the MCC was actually told, never what the
@@ -189,7 +189,7 @@ Each phase shall produce:
 | Deviation record | Any requirement not met, with reason and disposition. |
 | Review note | Reviewer comments, recorded under `docs/review/`. |
 
-### 8.1 Evidence produced for Phases 1-16
+### 8.1 Evidence produced for Phases 1-17
 
 The deterministic suite now lives in [`tests/`](../tests/) and is run with
 `python3 -m pytest` from the repository root. It uses only Python 3.9+ and
@@ -214,7 +214,8 @@ pytest.
 | `tests/test_fault_injection.py` | Phase 14 injected-fault scenarios: 12 fault categories and the A-J end-to-end scenarios. |
 | `tests/mcc_harness.py` | Phase 15 Master Control Center simulation harness (`MccSim`); test support, not production code. |
 | `tests/test_mcc.py` | Phase 15 MCC data-layer scenarios: registries, aggregation, degradation, fault/event visibility, commands, authorization, config readback, local independence and end-to-end scenarios. |
-| `tests/test_integration.py` | Phase 16 full-integration scenarios (38): scenarios A-D, fault path to the MCC, offline/store-and-forward A-H, restart/reconstruction, multi-group/multi-site isolation, communication including negative frames, configuration with readback, time/freshness, digital/software-scale and authorization negatives. |
+| `tests/test_integration.py` | Phase 16 full-integration scenarios (38): scenarios A-D, fault path to the MCC, offline/store-and-forward A-H, restart/reconstruction, multi-group/multi-site isolation, communication including negative frames, configuration with readback, time/freshness, digital/software-scale (including per-lamp command routing across the 64-lamp run) and authorization negatives. |
+| `tests/test_system_validation.py` | Phase 17 system-validation evidence (6): total-supervision outage, interrupted recovery, fault-never-darkens-the-street, energy accumulation and restart survival, applied-configuration restart survival, and unsynchronized-time validity. Closes the evidence gaps found by the Phase 17 audit. |
 
 Every `VERIFIED` entry in
 [requirements_traceability.md](requirements_traceability.md) names the module
@@ -288,7 +289,7 @@ logic only**. This is stated explicitly in the traceability record.
 | Test strategy defined | Yes |
 | Fault injection matrix defined | Yes |
 | Test identifiers / tooling | pytest; deterministic logical clock, no wall clock or randomness |
-| Tests implemented | Yes - `tests/` covers Phases 1-16 (639 tests); see section 8.1 |
+| Tests implemented | Yes - `tests/` covers Phases 1-17 (645 tests); see section 8.1 |
 
 ---
 

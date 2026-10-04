@@ -53,7 +53,13 @@ cited the Phase 16 integration test now cite real integration tests, and one
 status changed - `PR-FAULT-007` moved from `VERIFIED` to `PARTIAL` because the
 integration run exposed the concurrent-fault limit of the single-snapshot
 `FAULT_REPORT` pull (section 5.1 of [13_integration_validation.md](13_integration_validation.md)).
-Neither phase verifies anything at the physical level.
+Phase 17 adds system-validation evidence (section 10): every requirement was
+re-audited against the code and the tests, two citations that pointed at a
+non-existent or non-exercising test were corrected, two `VERIFIED` rows whose
+evidence did not demonstrate the claim were given real evidence, and the seven
+requirements that name Phase 17 as a verification method were exercised by
+`tests/test_system_validation.py`. No status changed. No phase verifies anything
+at the physical level.
 
 ## 5. Traceability matrix
 
@@ -79,7 +85,7 @@ Neither phase verifies anything at the physical level.
 | `PR-COMM-006` | CRC integrity verification | RS-485 field bus / Group Controller | src/sslv1/comm/crc.py, src/sslv1/comm/frame.py | test_comm.py::test_crc_failure_is_detected, ::test_bus_corruption_is_detectable | `VERIFIED` |
 | `PR-COMM-007` | Polling, timeout and retry policy | RS-485 field bus / Group Controller | src/sslv1/nodes/group_controller.py (poll, poll_timeout_ticks, poll_retry_count) | test_group_controller.py::test_communication_fault_is_detected_after_retries; test_integration.py::test_mcc_polling_uses_the_existing_poll_and_timeout_paths, ::test_a_silent_node_is_unavailable_at_the_mcc_while_its_neighbours_report | `VERIFIED` |
 | `PR-COMM-008` | Communication state machine | RS-485 field bus / Group Controller | src/sslv1/comm/state_machine.py (CommunicationStateMachine) | test_comm.py::test_healthy_to_retry_to_degraded_to_fault, ::test_recovery_returns_to_healthy, ::test_retry_recovers_to_healthy; test_integration.py::test_a_silent_node_is_unavailable_at_the_mcc_while_its_neighbours_report (COMM_FAULT -> RECOVERY -> COMM_HEALTHY with COMM_RECOVERED evidence), ::test_one_groups_link_failure_cannot_contaminate_another_group | `PARTIAL` |
-| `PR-COMM-009` | Communication failure must not stop local operation | RS-485 field bus / Group Controller | src/sslv1/nodes/lamp_node.py (local control independent of the bus) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting; test_scenarios.py::test_scenario_38_communication_retry_then_degraded | `VERIFIED` |
+| `PR-COMM-009` | Communication failure must not stop local operation | RS-485 field bus / Group Controller | src/sslv1/nodes/lamp_node.py (local control independent of the bus) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting; test_scenarios.py::test_scenario_38_communication_retry_then_degraded; test_system_validation.py::test_local_operation_survives_a_total_supervision_outage (no supervision traffic at all) | `VERIFIED` |
 | `PR-COMM-010` | Command subtypes carried inside CONTROL_COMMAND | RS-485 field bus / Group Controller | src/sslv1/enums.py (ControlSubtype), src/sslv1/comm/protocol.py (CONTROL_COMMAND payload) | test_command.py::test_reset_energy_is_a_control_subtype_not_a_message_type; test_comm.py::test_control_command_payload_carries_reset_energy_subtype | `VERIFIED` |
 
 ### 5.3 Configuration management
@@ -90,7 +96,7 @@ Neither phase verifies anything at the physical level.
 | `PR-CONFIG-002` | Configuration read and write over the bus | Configuration management | src/sslv1/nodes/group_controller.py (distribute_configuration), src/sslv1/nodes/lamp_node.py (configuration read and write handlers) | test_group_controller.py::test_configuration_distribution_is_acknowledged, ::test_invalid_configuration_is_rejected_by_the_node; test_integration.py::test_configuration_change_is_authorized_applied_and_verified_end_to_end, ::test_configuration_write_requires_privilege_and_a_newer_version | `PARTIAL` |
 | `PR-CONFIG-003` | Configuration validation | Configuration management | src/sslv1/configuration.py (LampConfiguration.validate / validated) | test_scenarios.py::test_scenario_44_configuration_validation; test_configuration.py::test_validation_rejects_every_invalid_threshold, ::test_hysteresis_wider_than_the_dead_band_is_rejected | `VERIFIED` |
 | `PR-CONFIG-004` | Configuration change auditability | Configuration management | src/sslv1/event.py (EventLog), src/sslv1/nodes/lamp_node.py (_record_event) | test_scenarios.py::test_scenario_49_important_transitions_generate_events, ::test_scenario_50_rejected_command_is_audited; test_integration.py::test_configuration_change_is_authorized_applied_and_verified_end_to_end, ::test_configuration_write_requires_privilege_and_a_newer_version | `VERIFIED` |
-| `PR-CONFIG-005` | Configuration persistence and versioning | Configuration management | src/sslv1/nodes/lamp_node.py (config_version, _apply_config_parameters) | test_group_controller.py::test_configuration_distribution_is_acknowledged (config_version is carried) | `VERIFIED` |
+| `PR-CONFIG-005` | Configuration persistence and versioning | Configuration management | src/sslv1/nodes/lamp_node.py (config_version, _apply_config_parameters) | test_group_controller.py::test_configuration_distribution_is_acknowledged (config_version is carried); test_integration.py::test_node_restart_keeps_identity_and_configuration_and_fails_the_command; test_system_validation.py::test_an_applied_configuration_and_its_version_survive_a_restart (applied change + version, readback included) | `VERIFIED` |
 | `PR-CONFIG-006` | No hardcoded operational thresholds | Configuration management | src/sslv1/configuration.py (every threshold is a field, none is a module constant) | test_scenarios.py::test_scenario_45_every_threshold_is_configurable; test_configuration.py::test_no_operational_threshold_is_hardcoded, ::test_two_nodes_can_use_different_thresholds | `VERIFIED` |
 
 ### 5.4 Control model (Lamp Node)
@@ -102,7 +108,7 @@ Neither phase verifies anything at the physical level.
 | `PR-CONTROL-003` | Duplicate command handling | Control model (Lamp Node) | src/sslv1/command.py (CommandService.submit duplicate suppression) | test_scenarios.py::test_scenario_14_duplicate_command_is_suppressed; test_command.py::test_duplicate_command_is_not_executed_twice, ::test_duplicate_command_does_not_toggle_the_lamp; test_integration.py::test_force_on_is_idempotent_and_never_reaches_a_second_lamp | `VERIFIED` |
 | `PR-CONTROL-004` | Command authorization status | Control model (Lamp Node) | src/sslv1/command.py (CommandService authorization), src/sslv1/authorization.py | test_scenarios.py::test_scenario_15_unauthorized_command_is_rejected; test_command.py::test_unauthorized_operator_cannot_force_the_lamp, ::test_unauthenticated_actor_is_rejected; test_integration.py::test_unauthorized_operator_actions_never_reach_the_field_layer | `VERIFIED` |
 | `PR-CONTROL-005` | Safe state restoration after restart | Control model (Lamp Node) | src/sslv1/nodes/lamp_node.py (start, restart and the configured restart default) | test_control.py::test_return_to_auto_clears_override; test_integration.py::test_node_restart_keeps_identity_and_configuration_and_fails_the_command, ::test_controller_restart_drops_transient_state_and_keeps_persistence, ::test_mcc_reconstruction_from_the_same_controllers_reproduces_the_view | `VERIFIED` |
-| `PR-CONTROL-006` | No automatic shutdown for non-protective conditions | Control model (Lamp Node) | src/sslv1/control.py (ProtectionState, no automatic shutdown path) | test_control.py::test_no_protection_condition_is_defined_in_v1; test_scenarios.py::test_scenario_12_fault_acknowledgement_is_not_a_lighting_input | `VERIFIED` |
+| `PR-CONTROL-006` | No automatic shutdown for non-protective conditions | Control model (Lamp Node) | src/sslv1/control.py (ProtectionState, no automatic shutdown path) | test_control.py::test_no_protection_condition_is_defined_in_v1; test_scenarios.py::test_scenario_12_fault_acknowledgement_is_not_a_lighting_input; test_system_validation.py::test_a_fault_never_switches_the_lamp_off_or_engages_protection | `VERIFIED` |
 | `PR-CONTROL-007` | Separation of configured mode, active override and effective state | Control model (Lamp Node) | src/sslv1/control.py (ControlModel: configured_mode / active_override / effective_mode) | test_control.py::test_control_model_separates_configured_override_and_effective; test_identity.py::test_identity_hierarchy_is_complete | `VERIFIED` |
 
 ### 5.5 Diagnostics (Lamp Node)
@@ -129,7 +135,7 @@ Neither phase verifies anything at the physical level.
 | `PR-FAULT-006` | Fault latching and hysteresis | Fault management (Lamp Node) | src/sslv1/fault.py (latching in observe), src/sslv1/configuration.py (confirmation window) | test_fault.py::test_confirmed_fault_latches_against_a_single_normal_measurement, ::test_threshold_oscillation_creates_one_fault_not_many; test_scenarios.py::test_scenario_29_fault_latching | `VERIFIED` |
 | `PR-FAULT-007` | Fault notification | Fault management (Lamp Node) | src/sslv1/notification.py (NotificationEngine) | test_fault.py::test_not_required_when_ack_not_configured; test_integration.py::test_fault_path_from_measurement_to_mcc_and_back_to_clear, ::test_fault_records_reach_the_mcc_upstream_end_after_recovery, ::test_a_fault_clear_is_scoped_to_its_own_fault_and_keeps_history, ::test_fault_visibility_never_claims_a_fault_the_group_did_not_receive, ::test_concurrent_confirmed_faults_are_bounded_by_the_single_fault_report_pull (limitation evidence) | `PARTIAL` |
 | `PR-FAULT-008` | Acknowledgement, reminder and escalation | Fault management (Lamp Node) | src/sslv1/notification.py (tick, acknowledge, delivery failure handling) | test_fault.py::test_reminder_and_escalation_do_not_change_fault_state, ::test_notification_failure_is_retried_then_reported, ::test_delivery_failure_retry_path_still_returns_to_pending, ::test_delivery_failure_beyond_retry_limit_does_not_crash, ::test_notification_reminder_is_idempotent, ::test_notification_reminder_does_not_spam_events, ::test_notification_escalates_after_timeout_without_crash, ::test_notification_tick_is_legal_from_every_resting_state; test_integration.py::test_fault_path_from_measurement_to_mcc_and_back_to_clear | `VERIFIED` |
-| `PR-FAULT-009` | Unacknowledged alerts must not switch the lamp OFF | Fault management (Lamp Node) | src/sslv1/nodes/lamp_node.py (no notification-to-lighting coupling) | test_scenarios.py::test_scenario_30_fault_acknowledgement_does_not_dim_the_light | `VERIFIED` |
+| `PR-FAULT-009` | Unacknowledged alerts must not switch the lamp OFF | Fault management (Lamp Node) | src/sslv1/nodes/lamp_node.py (no notification-to-lighting coupling) | test_scenarios.py::test_scenario_30_fault_acknowledgement_does_not_dim_the_light; test_system_validation.py::test_a_fault_never_switches_the_lamp_off_or_engages_protection (unacknowledged, past escalation, still on) | `VERIFIED` |
 | `PR-FAULT-010` | Repair workflow | Fault management (Lamp Node) | src/sslv1/fault.py (acknowledge, start_repair, report_repaired) | test_fault.py::test_repair_workflow, ::test_repair_cannot_start_before_acknowledgement | `VERIFIED` |
 | `PR-FAULT-011` | Verification workflow and failed verification | Fault management (Lamp Node) | src/sslv1/fault.py (verify) | test_fault.py::test_successful_verification_closes_the_fault, ::test_failed_verification_returns_to_an_active_fault_state; test_scenarios.py::test_scenario_32_failed_verification_reopens_the_fault | `PARTIAL` |
 | `PR-FAULT-012` | Fault closure and failure containment | Fault management (Lamp Node) | src/sslv1/fault.py (FaultLifecycle CLOSED transition), src/sslv1/nodes/lamp_node.py (per-node engines) | test_fault.py::test_one_nodes_fault_does_not_affect_another_node; test_scenarios.py::test_scenario_46_multi_node_isolation; test_integration.py::test_fault_path_from_measurement_to_mcc_and_back_to_clear, ::test_a_fault_clear_is_scoped_to_its_own_fault_and_keeps_history, ::test_fault_visibility_never_claims_a_fault_the_group_did_not_receive | `VERIFIED` |
@@ -142,8 +148,8 @@ Neither phase verifies anything at the physical level.
 | --- | --- | --- | --- | --- | --- |
 | `PR-IDENTITY-001` | Identity hierarchy | Device identity and addressing | src/sslv1/identity.py (DeviceIdentity, Identifier, McuUniqueId), src/sslv1/mcc.py (registry) | test_identity.py::test_identity_hierarchy_is_complete; test_mcc.py::test_lamp_inventory_preserves_the_identity_hierarchy, ::test_identical_lamp_ids_in_different_groups_are_different_lamps; test_integration.py::test_same_identifier_in_two_sites_is_two_different_systems, ::test_a_command_to_a_missing_or_foreign_target_is_refused_locally | `VERIFIED` |
 | `PR-IDENTITY-002` | Deterministic and persistent identity | Device identity and addressing | src/sslv1/identity.py (Identifier is value-based) | test_identity.py::test_identity_is_deterministic_and_value_based | `VERIFIED` |
-| `PR-IDENTITY-003` | Bus address uniqueness | Device identity and addressing | src/sslv1/identity.py (BusAddress, MIN/MAX), src/sslv1/nodes/group_controller.py (register_node) | test_identity.py::test_bus_address_range_is_enforced, ::test_duplicate_registration_is_rejected; test_integration.py::test_scale_aggregation_keeps_every_lamp_addressable (an address is unique inside its group) | `VERIFIED` |
-| `PR-IDENTITY-004` | Identity query | Device identity and addressing | src/sslv1/nodes/group_controller.py (identify), src/sslv1/nodes/lamp_node.py (identify handler) | test_group_controller.py::test_group_snapshot_reports_communication_state; test_comm.py::test_identify_payload_round_trip | `VERIFIED` |
+| `PR-IDENTITY-003` | Bus address uniqueness | Device identity and addressing | src/sslv1/identity.py (BusAddress, MIN/MAX), src/sslv1/nodes/group_controller.py (register_node) | test_identity.py::test_bus_address_range_is_enforced, ::test_duplicate_bus_address_is_detected, ::test_duplicate_lamp_id_is_detected; test_scenarios.py::test_scenario_48_duplicate_registration_is_rejected; test_integration.py::test_scale_aggregation_keeps_every_lamp_addressable (an address is unique inside its group) | `VERIFIED` |
+| `PR-IDENTITY-004` | Identity query | Device identity and addressing | src/sslv1/nodes/group_controller.py (identify), src/sslv1/nodes/lamp_node.py (identify handler) | test_comm.py::test_identify_payload_round_trip; test_post_merge.py::test_identity_time_heartbeat_ack_dispatch (the controller receives the node's own identity acknowledgement) | `VERIFIED` |
 
 ### 5.8 Measurement handling (Lamp Node)
 
@@ -151,7 +157,7 @@ Neither phase verifies anything at the physical level.
 | --- | --- | --- | --- | --- | --- |
 | `PR-MEASURE-001` | Per-lamp measurement set | Measurement handling (Lamp Node) | src/sslv1/measurement.py (Measurement), src/sslv1/nodes/lamp_node.py (measurement construction) | test_scenarios.py::test_scenario_17_normal_measurement; test_measurement.py | `VERIFIED` |
 | `PR-MEASURE-002` | Configurable measurement and reporting intervals | Measurement handling (Lamp Node) | src/sslv1/configuration.py (reporting_interval_ticks), src/sslv1/nodes/lamp_node.py | test_configuration.py::test_reporting_interval_is_configurable; test_integration.py::test_scenario_a_automatic_operation_from_registration_to_mcc_view, ::test_stale_measurements_are_never_presented_as_current | `VERIFIED` |
-| `PR-MEASURE-003` | Energy accumulation | Measurement handling (Lamp Node) | src/sslv1/nodes/lamp_node.py (energy accumulation and reset) | test_command.py::test_energy_reset_requires_authorization | `VERIFIED` |
+| `PR-MEASURE-003` | Energy accumulation | Measurement handling (Lamp Node) | src/sslv1/nodes/lamp_node.py (energy accumulation and reset) | test_command.py::test_energy_reset_requires_authorization; test_post_merge.py::test_negative_or_nonfinite_energy_samples_do_not_decrement; test_system_validation.py::test_energy_accumulates_proportionally_and_survives_a_restart | `VERIFIED` |
 | `PR-MEASURE-004` | Sensor validity reporting | Measurement handling (Lamp Node) | src/sslv1/measurement.py (MeasurementValidator), src/sslv1/enums.py (SensorStatus) | test_measurement.py::test_invalid_sensor_is_reported_not_guessed_around, ::test_invalid_sensor_retains_the_previous_lighting_decision | `VERIFIED` |
 | `PR-MEASURE-005` | Monitoring values, not billing-grade metering | Measurement handling (Lamp Node) | src/sslv1/measurement.py (Measurement carries no billing flag) | test_scenarios.py::test_scenario_17_normal_measurement (asserts no billing-grade field) | `VERIFIED` |
 
@@ -159,11 +165,11 @@ Neither phase verifies anything at the physical level.
 
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
-| `PR-OFFLINE-001` | Local operation without Internet | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (no upstream dependency) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting | `VERIFIED` |
-| `PR-OFFLINE-002` | Local operation without the Master Control Center | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (local control only), src/sslv1/mcc.py (consumer only, not a dependency) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting; test_mcc.py::test_lamps_keep_operating_while_the_mcc_has_never_polled, ::test_local_records_are_kept_while_the_mcc_is_unreachable | `VERIFIED` |
+| `PR-OFFLINE-001` | Local operation without Internet | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (no upstream dependency) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting; test_system_validation.py::test_local_operation_survives_a_total_supervision_outage | `VERIFIED` |
+| `PR-OFFLINE-002` | Local operation without the Master Control Center | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (local control only), src/sslv1/mcc.py (consumer only, not a dependency) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting; test_mcc.py::test_lamps_keep_operating_while_the_mcc_has_never_polled, ::test_local_records_are_kept_while_the_mcc_is_unreachable; test_system_validation.py::test_local_operation_survives_a_total_supervision_outage | `VERIFIED` |
 | `PR-OFFLINE-003` | Local operation without the Group Controller | Offline operation and buffering | src/sslv1/nodes/lamp_node.py (operates with no controller traffic) | test_group_controller.py::test_communication_fault_does_not_stop_local_lighting | `VERIFIED` |
 | `PR-OFFLINE-004` | Offline record buffering | Offline operation and buffering | src/sslv1/storage.py (RecordStore buffering), src/sslv1/nodes/group_controller.py (pending queue) | test_group_controller.py::test_records_are_buffered_while_upstream_is_unavailable; test_integration.py::test_offline_cycle_buffers_everything_and_replays_it_once | `VERIFIED` |
-| `PR-OFFLINE-005` | Post-recovery synchronization without silent loss | Offline operation and buffering | src/sslv1/nodes/group_controller.py (forward_upstream confirmed-only removal, no duplicate upload) | test_group_controller.py::test_buffered_records_are_uploaded_after_recovery, ::test_no_duplicate_upload_of_the_same_record, ::test_communication_recovery_resynchronizes; test_integration.py::test_offline_cycle_buffers_everything_and_replays_it_once, ::test_lost_confirmation_replays_without_duplicating_mcc_history, ::test_fault_records_reach_the_mcc_upstream_end_after_recovery | `PARTIAL` |
+| `PR-OFFLINE-005` | Post-recovery synchronization without silent loss | Offline operation and buffering | src/sslv1/nodes/group_controller.py (forward_upstream confirmed-only removal, no duplicate upload) | test_group_controller.py::test_buffered_records_are_uploaded_after_recovery, ::test_no_duplicate_upload_of_the_same_record, ::test_communication_recovery_resynchronizes; test_integration.py::test_offline_cycle_buffers_everything_and_replays_it_once, ::test_lost_confirmation_replays_without_duplicating_mcc_history, ::test_fault_records_reach_the_mcc_upstream_end_after_recovery; test_system_validation.py::test_recovery_interrupted_midway_claims_nothing_and_loses_nothing, ::test_local_operation_survives_a_total_supervision_outage | `PARTIAL` |
 
 ### 5.10 Group Controller / node management
 
@@ -190,7 +196,7 @@ Neither phase verifies anything at the physical level.
 
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
-| `PR-STORAGE-001` | Local persistent record storage | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (RecordStore) | test_storage.py::test_records_carry_the_required_envelope; test_scenarios.py::test_scenario_34_storage_record_lifecycle | `VERIFIED` |
+| `PR-STORAGE-001` | Local persistent record storage | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (RecordStore) | test_storage.py::test_records_carry_the_required_envelope, ::test_power_loss_recovery_keeps_committed_records_uploadable; test_scenarios.py::test_scenario_34_storage_record_lifecycle; test_group_controller.py::test_records_are_buffered_while_upstream_is_unavailable; test_integration.py::test_controller_restart_drops_transient_state_and_keeps_persistence | `VERIFIED` |
 | `PR-STORAGE-002` | Record structure | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (StorageRecord, compute_crc, is_valid) | test_storage.py::test_records_carry_the_required_envelope, ::test_uncommitted_record_is_not_valid | `VERIFIED` |
 | `PR-STORAGE-003` | Power-loss safety | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (commit_marker, simulate_power_loss, recover) | test_storage.py::test_power_loss_discards_incomplete_records, ::test_power_loss_recovery_keeps_committed_records_uploadable; test_scenarios.py::test_scenario_37_power_loss_recovery | `VERIFIED` |
 | `PR-STORAGE-004` | Corruption detection and handling | Record storage (Lamp Node / Group Controller) | src/sslv1/storage.py (StorageRecord.compute_crc, detect_corruption, corrupt) | test_storage.py::test_corrupted_record_is_detected_and_flagged, ::test_corrupt_record_is_excluded_from_upload | `VERIFIED` |
@@ -204,7 +210,7 @@ Neither phase verifies anything at the physical level.
 
 | Requirement ID | Requirement | Architecture element | Implementation module | Test evidence | Verification status |
 | --- | --- | --- | --- | --- | --- |
-| `PR-TIME-001` | RTC-backed local timekeeping | Time model (Lamp Node / Group Controller) | src/sslv1/time_model.py (LogicalClock, TimeModel) - logical only | test_time.py::test_clock_is_deterministic_and_monotonic | `VERIFIED` |
+| `PR-TIME-001` | RTC-backed local timekeeping | Time model (Lamp Node / Group Controller) | src/sslv1/time_model.py (LogicalClock, TimeModel) - logical only | test_time.py::test_clock_is_deterministic_and_monotonic; test_group_controller.py::test_offline_timestamps_are_flagged_uncertain; test_system_validation.py::test_an_unsynchronized_node_keeps_time_and_never_claims_synchronized (local time advances with no sync; validity never invented) | `VERIFIED` |
 | `PR-TIME-002` | Offline timestamps with validity indication | Time model (Lamp Node / Group Controller) | src/sslv1/time_model.py (Timestamp.sync_state, TimeModel.uncertain) | test_scenarios.py::test_scenario_41_offline_timestamps_are_uncertain; test_group_controller.py::test_offline_timestamps_are_flagged_uncertain; test_integration.py::test_time_synchronization_propagates_and_is_visible_per_lamp, ::test_event_and_fault_timestamps_come_from_the_logical_clock_only | `VERIFIED` |
 | `PR-TIME-003` | Time synchronization | Time model (Lamp Node / Group Controller) | src/sslv1/nodes/group_controller.py (synchronize_time), src/sslv1/nodes/lamp_node.py (time-sync handler) | test_scenarios.py::test_scenario_40_time_synchronization; test_group_controller.py::test_time_synchronization_reaches_every_node; test_integration.py::test_time_synchronization_propagates_and_is_visible_per_lamp | `VERIFIED` |
 | `PR-TIME-004` | Time-uncertainty handling and recovery | Time model (Lamp Node / Group Controller) | src/sslv1/time_model.py (_refresh_uncertainty, mark_unsynchronized) | test_time.py::test_time_becomes_uncertain_after_the_threshold; test_integration.py::test_time_synchronization_propagates_and_is_visible_per_lamp | `VERIFIED` |
@@ -349,6 +355,52 @@ The consequent eight PARTIAL rows are `PR-CONFIG-001`, `PR-CONFIG-002`,
 data layer proves deterministic aggregation over the digital model only: it is
 not a GUI, application, cloud service, database-backed backend or physical
 deployment, and none of those are claimed.
+
+---
+
+## 10. Phase 17 system-validation evidence
+
+Phase 17 did not add product behavior. It audited the matrix against the code
+and the tests, corrected evidence that did not demonstrate the claim it was
+cited for, and added the system-validation evidence that seven requirements
+already named as their verification method.
+
+Method (all of it reproducible from the repository):
+
+1. every requirement in [02_product_requirements.md](02_product_requirements.md)
+   was matched to its matrix row, its implementation and its cited tests;
+2. every cited test was resolved against the actual test modules (name and
+   file) and read for what it asserts;
+3. the four remaining status vocabularies (VERIFIED/PARTIAL/PLANNED,
+   assumptions, decisions, limitations) were checked against the code;
+4. requirements whose verification method names Phase 17 were exercised by
+   `tests/test_system_validation.py` rather than by re-reading Phase 16 tests.
+
+| Requirement | Audit result | Phase 17 evidence |
+| --- | --- | --- |
+| `PR-OFFLINE-001`, `PR-OFFLINE-002`, `PR-OFFLINE-003`, `PR-COMM-009` | Claim held (no supervision dependency) | `test_system_validation.py::test_local_operation_survives_a_total_supervision_outage` - no MCC, no upstream link and no controller traffic at all: both lamps still switch by their own decisions, zero frames cross the bus, the local records are kept, and the recovered link receives that history |
+| `PR-OFFLINE-005` | Claim held; status **stays PARTIAL** for the caller-driven trigger | `test_system_validation.py::test_recovery_interrupted_midway_claims_nothing_and_loses_nothing` - an upstream that fails again mid-replay confirms exactly what it accepted, reports the rest as pending, and the remainder then arrives once, in sequence order, with no duplicate storage |
+| `PR-CONTROL-006`, `PR-FAULT-009` | Claim held (fault machinery is observational) | `test_system_validation.py::test_a_fault_never_switches_the_lamp_off_or_engages_protection` - a confirmed, unacknowledged fault driven past every notification deadline keeps the lamp on, engages no protection and never becomes an override |
+| `PR-MEASURE-003` | **Evidence gap closed**: the row cited an authorization test only | `test_system_validation.py::test_energy_accumulates_proportionally_and_survives_a_restart` (accumulation proportional to power and interval, retained across a restart, cleared only by an authorized reset) + `test_post_merge.py::test_negative_or_nonfinite_energy_samples_do_not_decrement` |
+| `PR-CONFIG-005` | **Evidence gap closed**: the row cited version carriage only | `test_system_validation.py::test_an_applied_configuration_and_its_version_survive_a_restart` (an applied change and its version survive the restart and read back; a stale re-use of the same version is refused, proving the version persisted) + `test_integration.py::test_node_restart_keeps_identity_and_configuration_and_fails_the_command` |
+| `PR-IDENTITY-003` | **Wrong citation corrected**: `test_duplicate_registration_is_rejected` does not exist | Real duplicate handling: `test_identity.py::test_duplicate_bus_address_is_detected`, `::test_duplicate_lamp_id_is_detected`, `test_scenarios.py::test_scenario_48_duplicate_registration_is_rejected` |
+| `PR-IDENTITY-004` | **Wrong citation corrected**: a snapshot test does not exercise `IDENTIFY` | `test_post_merge.py::test_identity_time_heartbeat_ack_dispatch` (the `IDENTIFY_ACK` carries the node's own identity) + `test_comm.py::test_identify_payload_round_trip` |
+| `PR-TIME-001` | Claim clarified (model semantics only, physical part is `PR-TIME-005`) | Unified-clock test + `test_group_controller.py::test_offline_timestamps_are_flagged_uncertain` + `test_system_validation.py::test_an_unsynchronized_node_keeps_time_and_never_claims_synchronized` |
+| `PR-STORAGE-001` | Claim narrowed to what is demonstrated ("persistent" = retained in the modelled store) | Added the buffering and restart-retention evidence: `test_group_controller.py::test_records_are_buffered_while_upstream_is_unavailable`, `test_integration.py::test_controller_restart_drops_transient_state_and_keeps_persistence`, `test_storage.py::test_power_loss_recovery_keeps_committed_records_uploadable` |
+| Existing 77 `VERIFIED` rows | All re-challenged; none found unsupported | See [14_system_validation.md](14_system_validation.md) section 4 for the challenge method and the borderline rows |
+
+Phase 17 changed **no** status: the counts remain 77 `VERIFIED`, 8 `PARTIAL`
+and 3 `PLANNED`. What changed is the evidence: two citations that pointed at
+tests that did not exist or did not test the requirement, two requirements whose
+`VERIFIED` status was under-evidenced (energy accumulation and configuration
+persistence across restart) and are now genuinely evidenced, and the Phase 17
+system-validation method recorded for the rows that already declared it.
+
+The Phase 17 audit found no requirement whose status was *stronger* than its
+evidence after those corrections, and no requirement that needed to be
+downgraded. It also found no code defect: the three production fixes made in
+Phase 16 (all-unavailable group aggregation, controller time validity, restart
+failing in-flight commands) are unchanged and still tested.
 
 ---
 

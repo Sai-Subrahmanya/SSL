@@ -252,3 +252,10 @@ deployable system, and the concurrent-fault reporting limit bounds
 `PR-FAULT-007` to PARTIAL.
 See PARTIAL/PLANNED rows in requirements_traceability.md; no blanket completion
 claim supersedes those limitations.
+
+Phase 17 audited every requirement against the implementation and the test
+evidence ([14_system_validation.md](14_system_validation.md)). It found no
+requirement whose status was stronger than its evidence, no duplicated source
+of truth and no new limitation: the boundaries listed above are the complete
+set, and the seven requirements whose verification method names Phase 17 are
+now exercised by `tests/test_system_validation.py` rather than assumed.
