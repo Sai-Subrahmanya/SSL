@@ -160,7 +160,7 @@ implemented or simulated.
 | A-27 | Detailed production permission matrix. | Security design. |
 | A-28 | Group Controller storage medium. | Hardware design. |
 | A-29 | Numeric minimum retention period. | Site policy and storage sizing. |
-| A-30 | Mains safety class, protective-earth treatment and isolation boundary. | Safety decision with a qualified hardware engineer; it gates schematic capture and PCB layout. |
+| A-30 | Mains safety class, protective-earth treatment and isolation boundary. **Still open**: the preliminary analysis — isolation-domain map, per-interface status, confirmed component datasheet facts and the minimum inputs — is in [hardware_reference.md](hardware_reference.md) section 6, including why the class cannot be frozen yet. | Safety decision with a qualified hardware/safety engineer and a frozen enclosure/installation concept; it gates schematic capture and PCB layout. |
 
 The V1 electrical targets — nominal 230 VAC switched lamp output, a 90–305 VAC
 controller input range and a single-phase line-to-neutral scope (`A-02`,
