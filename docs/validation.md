@@ -207,7 +207,10 @@ absorbed into the current rule:
   widened or given an assumed power factor.
 
 The hardware-side inputs that these items feed are listed in
-[hardware_reference.md](hardware_reference.md).
+[hardware_reference.md](hardware_reference.md). The power-tree side of the same
+input set — rail assignments, the loads that are known, the loads that are still
+OPEN, the power risks and their prioritised closure list — is in
+[hardware_reference.md](hardware_reference.md) section 7.
 
 ## 7. Related documents
 
