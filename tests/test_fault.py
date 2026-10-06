@@ -590,7 +590,7 @@ def test_one_nodes_fault_does_not_affect_another_node(clock, bus, authorizer,
 # fault -> event association is real, not just declared
 # --------------------------------------------------------------------------
 def test_fault_records_its_related_event_ids(lamp_node):
-    """The association documented in 03_data_model.md section 5 is populated."""
+    """The fault -> event association is real, not just a declared field."""
     for index in range(5):
         lamp_node.step(
             healthy_sources(current=0.0, power=0.0, light_level=10.0,

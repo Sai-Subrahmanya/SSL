@@ -1142,9 +1142,8 @@ class LampNode(BusEndpoint):
                 "notification_state": fault.notification_state.value,
             },
         )
-        # Keep the fault -> event association documented in 03_data_model.md
-        # section 5 actually populated, rather than a field that is declared
-        # and never filled.
+        # Keep the fault -> event association populated, rather than a field
+        # that is declared and never filled.
         if event.event_id not in fault.related_event_ids:
             fault.related_event_ids.append(event.event_id)
 
