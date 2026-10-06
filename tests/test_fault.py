@@ -42,6 +42,25 @@ def open_load_result():
     )
 
 
+def supply_abnormality_result():
+    """A different fault condition for the same lamp."""
+    return DiagnosticResult(
+        classification=DiagnosticClassification.SUPPLY_ABNORMALITY,
+        fault_category=FaultType.SUPPLY_VOLTAGE,
+        confidence=Confidence.HIGH,
+        reason="commanded ON but supply voltage is absent or invalid",
+        evidence=DiagnosticEvidence(
+            commanded_state=LampState.ON,
+            switching_feedback=LampState.ON,
+            voltage=0.0,
+            current=0.0,
+            power=0.0,
+            light_level=10.0,
+            voltage_valid=False,
+        ),
+    )
+
+
 def normal_result():
     return DiagnosticResult(
         classification=DiagnosticClassification.NORMAL,
@@ -181,6 +200,94 @@ def test_unconfirmed_suspicion_clears_when_evidence_clears(engine):
     engine.observe(SITE, GROUP, lamp(), normal_result(), ticks=2000)
     assert engine.active_faults == ()
     assert engine.faults[0].state is FaultState.NORMAL
+
+
+# --------------------------------------------------------------------------
+# 25b. a changed condition replaces an unconfirmed suspicion
+# --------------------------------------------------------------------------
+def test_a_changed_condition_retires_the_obsolete_suspicion(engine):
+    """A suspicion is only active while its own condition is current.
+
+    Regression: a new condition used to leave the obsolete suspected fault
+    active with its confirmation count reset, so the engine kept presenting a
+    fault for a condition that no longer existed.
+    """
+    engine.observe(SITE, GROUP, lamp(), open_load_result(), ticks=1000)
+    obsolete = engine.active_faults[0]
+    obsolete_key = obsolete.key()
+    assert obsolete.state is FaultState.SUSPECTED
+
+    engine.observe(SITE, GROUP, lamp(), supply_abnormality_result(), ticks=2000)
+
+    # Retired through the lifecycle, and its key released.
+    assert obsolete.state is FaultState.NORMAL
+    assert obsolete.is_active is False
+    assert obsolete_key not in engine._active_by_key
+    assert obsolete not in engine.active_faults
+    # Still a historical record, with the reason it was retired recorded.
+    assert obsolete in engine.faults
+    assert "SUPPLY_ABNORMALITY" in obsolete.confirmation_reason
+
+    # The replacement is the only active fault, and is still unconfirmed.
+    assert len(engine.active_faults) == 1
+    replacement = engine.active_faults[0]
+    assert replacement is not obsolete
+    assert replacement.state is FaultState.SUSPECTED
+    assert replacement.diagnostic_classification is (
+        DiagnosticClassification.SUPPLY_ABNORMALITY
+    )
+    assert engine._active_by_key[replacement.key()] == replacement.fault_id
+
+    # Repeating the replacement condition confirms it at the configured count.
+    for index in range(engine._policy.count - 1):
+        engine.observe(SITE, GROUP, lamp(), supply_abnormality_result(),
+                       ticks=3000 + 1000 * index)
+    assert replacement.state is FaultState.CONFIRMED
+    assert replacement.confirmation_count == engine._policy.count
+    assert len(engine.faults) == 2, "repeated observations create no extra records"
+
+
+def test_retiring_an_obsolete_suspicion_is_audited(lamp_node):
+    """The retirement is recorded on the event log and linked to the record."""
+    from sslv1.enums import EventType
+
+    def observe(result, ticks):
+        return lamp_node.faults.observe(
+            lamp_node.site_id, lamp_node.group_id, lamp_node.lamp_id, result, ticks
+        )
+
+    observe(open_load_result(), 1000)
+    obsolete = lamp_node.faults.active_faults[0]
+    observe(supply_abnormality_result(), 2000)
+
+    cleared = lamp_node.events.filter(event_type=EventType.FAULT_CLEARED)
+    assert len(cleared) == 1
+    assert cleared[0].related_fault_id == obsolete.fault_id
+    assert cleared[0].reason.startswith("condition replaced by SUPPLY_ABNORMALITY")
+    assert cleared[0].event_id in obsolete.related_event_ids
+    assert obsolete not in lamp_node.faults.active_faults
+    assert obsolete in lamp_node.faults.faults
+    # The node still reports the condition that is actually current.
+    assert lamp_node.faults.active_faults[0].diagnostic_classification is (
+        DiagnosticClassification.SUPPLY_ABNORMALITY
+    )
+
+
+def test_a_confirmed_fault_is_not_cleared_by_a_changed_classification(engine):
+    """Only suspicions are replaced; a confirmed fault keeps latching."""
+    for index in range(3):
+        engine.observe(SITE, GROUP, lamp(), open_load_result(), ticks=1000 * (index + 1))
+    confirmed = engine.active_faults[0]
+    assert confirmed.state is FaultState.CONFIRMED
+
+    engine.observe(SITE, GROUP, lamp(), supply_abnormality_result(), ticks=10_000)
+
+    assert confirmed.state is FaultState.CONFIRMED
+    assert confirmed in engine.active_faults
+    assert engine._active_by_key[confirmed.key()] == confirmed.fault_id
+    # The changed condition is a suspicion in its own right, alongside it.
+    others = [f for f in engine.active_faults if f is not confirmed]
+    assert [f.state for f in others] == [FaultState.SUSPECTED]
 
 
 # --------------------------------------------------------------------------

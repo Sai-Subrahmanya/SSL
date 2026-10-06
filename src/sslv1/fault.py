@@ -9,7 +9,9 @@ Fault lifecycle (``PR-FAULT-003``, ``D-011``)::
 
 Latching (``PR-FAULT-006``): a confirmed fault does not disappear because one
 later measurement looks normal. Clearing requires the repair/verification
-path, or (for an unconfirmed suspicion) the evidence clearing.
+path, or (for an unconfirmed suspicion) the evidence clearing. An unconfirmed
+suspicion is also retired when the diagnostic condition changes to a different
+fault key, so the active set always names the condition that is current.
 """
 
 from __future__ import annotations
@@ -213,6 +215,10 @@ class FaultEngine:
     ) -> Optional[Fault]:
         """Feed one diagnostic result into the fault engine.
 
+        An unconfirmed suspicion whose condition has been replaced by a
+        different fault key is retired to ``NORMAL`` and audited before the
+        new condition is handled. A confirmed fault is never cleared this way.
+
         Returns the fault that was created, confirmed or cleared, if any.
         """
         self._event_actor = None
@@ -227,10 +233,25 @@ class FaultEngine:
         category = result.fault_category or FaultType.UNKNOWN
         classification = result.classification
         key = (str(lamp_id), category, classification)
+
+        # A suspicion is only active while its own condition is the current one.
+        # When the diagnostic condition changes to a different fault key, the
+        # obsolete suspicion is retired through the legal lifecycle transition
+        # and its key is released, so it cannot stay represented as an active
+        # fault next to the condition that replaced it. Confirmed faults latch:
+        # a changed classification never clears them.
         for other in self.active_for_lamp(lamp_id):
             if other.state is FaultState.SUSPECTED and other.key() != key:
-                other.confirmation_count = 0
-                other.first_observation_ticks = ticks
+                reason = (
+                    "condition replaced by %s before confirmation"
+                    % classification.value
+                )
+                FaultLifecycle.transition(
+                    other, FaultState.NORMAL, ticks, reason=reason
+                )
+                self._active_by_key.pop(other.key(), None)
+                self._emit("FAULT_CLEARED", other, reason)
+
         fault_id = self._active_by_key.get(key)
 
         if fault_id is None:

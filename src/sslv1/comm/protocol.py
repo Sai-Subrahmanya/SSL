@@ -65,10 +65,10 @@ def _enum_code(enum_cls, value, field: str) -> int:
 
 
 def _enum_from_code(enum_cls, code: int, field: str):
-    try:
-        return list(enum_cls)[code]
-    except IndexError:
+    values = list(enum_cls)
+    if not 0 <= code < len(values):
         raise ProtocolError("unknown %s code %d" % (field, code))
+    return values[code]
 
 
 def _require(fields: Mapping[str, object], *names: str) -> None:
@@ -535,7 +535,10 @@ def decode_payload(message_type: MessageType, payload: bytes) -> Dict[str, objec
     from ..enums import ConfiguredMode, Role, TimeSyncState
     try:
         if len(payload) < 2:
-            # Empty requests have no data; preserve the bus request convention.
+            # Requests whose body is empty are transmitted frame-empty by the
+            # Group Controller (``_send_request`` default payload) and decoded
+            # here as the intentional wire convention of this protocol. A body-
+            # bearing message type, or a partial envelope, is still rejected.
             if payload == b'' and _CODECS[message_type][1] is _decode_empty:
                 return {}
             raise ProtocolError('missing payload envelope')

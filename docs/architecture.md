@@ -329,7 +329,10 @@ set. It is not wire-compatible with the earlier prototype version 1.
 `EVENT_REPORT`, `CONFIG_READ`, `CONFIG_WRITE`, `CONFIG_ACK`, `TIME_SYNC`,
 `TIME_ACK`, `IDENTIFY`, `IDENTIFY_ACK`, `HEARTBEAT`, `HEARTBEAT_ACK`.
 
-Payloads are compact big-endian binary with explicit lengths. Privileged
+Payloads are compact big-endian binary with explicit lengths. A request whose
+body is empty is transmitted with a zero-length payload; the decoder accepts
+both that form and the canonical empty length envelope for such a message type,
+and rejects an empty payload for any type that carries a body. Privileged
 message types require an actor assertion, which is validated before the payload
 is accepted; a malformed actor is a protocol error.
 

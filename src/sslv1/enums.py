@@ -401,6 +401,9 @@ class EventType(StrEnum):
     FAULT_TRANSITION_REJECTED = "FAULT_TRANSITION_REJECTED"
     FAULT_NOTIFIED = "FAULT_NOTIFIED"
     FAULT_REPAIR_REPORTED = "FAULT_REPAIR_REPORTED"
+    # Appended after the existing fault events so that every event type already
+    # in use keeps its wire code.
+    FAULT_CLEARED = "FAULT_CLEARED"
 
 
 # --------------------------------------------------------------------------

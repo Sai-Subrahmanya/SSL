@@ -114,6 +114,16 @@ def test_unknown_message_type_code_is_rejected():
         message_type_for_code(200)
 
 
+def test_negative_message_type_code_is_rejected():
+    """A negative code must not index the enum from the end."""
+    for code in (-1, -2, -len(list(MessageType))):
+        with pytest.raises(ProtocolError):
+            message_type_for_code(code)
+    # The boundary codes themselves stay valid.
+    assert message_type_for_code(0) is list(MessageType)[0]
+    assert message_type_for_code(len(list(MessageType)) - 1) is list(MessageType)[-1]
+
+
 def test_oversized_payload_is_rejected():
     with pytest.raises(ProtocolError):
         Frame(source=1, destination=0, message_type=MessageType.STATUS_REQUEST,
@@ -227,6 +237,28 @@ def test_fault_report_payload_round_trip():
 def test_empty_payload_codec_rejects_data():
     with pytest.raises(ProtocolError):
         decode_payload(MessageType.STATUS_REQUEST, b"\x00")
+
+
+def test_empty_request_payload_convention_is_intentional():
+    """Requests without a body travel frame-empty, and decode to no fields.
+
+    The Group Controller sends ``STATUS_REQUEST``, ``CONFIG_READ``,
+    ``IDENTIFY`` and ``HEARTBEAT`` with an empty payload, so an empty payload
+    is accepted for a message type whose canonical body is empty. The
+    canonical two-byte envelope decodes to the same result. A body-bearing
+    type has no such convention, and the ``FAULT_REPORT`` pull carries its
+    empty form through its own request contract instead.
+    """
+    for message_type in (MessageType.STATUS_REQUEST, MessageType.CONFIG_READ,
+                         MessageType.IDENTIFY, MessageType.HEARTBEAT):
+        assert encode_payload(message_type, {}) == b"\x00\x00"
+        assert decode_payload(message_type, b"") == {}
+        assert decode_payload(message_type, b"\x00\x00") == {}
+
+    with pytest.raises(ProtocolError):
+        decode_payload(MessageType.STATUS_RESPONSE, b"")
+    with pytest.raises(ProtocolError):
+        decode_payload(MessageType.FAULT_REPORT, b"")
 
 
 def test_malformed_payload_is_rejected():

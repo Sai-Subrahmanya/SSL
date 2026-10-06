@@ -192,6 +192,20 @@ documented consequence rather than a settled choice:
   acknowledgement timeout. Whether an undeliverable notification must also
   escalate is open (`tests/test_fault_injection.py`).
 
+One further engineering item is deliberately left unresolved rather than
+absorbed into the current rule:
+
+* **Apparent versus active power.** The measurement validator's physical check
+  compares `power` against `voltage × current` within a configured tolerance.
+  For an AC load that arithmetic is apparent power, while a real meter reports
+  active power, so the two differ by the power factor of the lamp and driver.
+  The rule is therefore only sound for a unity-power-factor front end. The
+  metering chain selected in Phase 19 — an ADE7953-class candidate with both
+  active and apparent power registers, see
+  [hardware_reference.md](hardware_reference.md) — resolves which quantity the
+  diagnostic compares; until then the tolerance is left unchanged rather than
+  widened or given an assumed power factor.
+
 The hardware-side inputs that these items feed are listed in
 [hardware_reference.md](hardware_reference.md).
 

@@ -157,7 +157,7 @@ NORMAL -> SUSPECTED -> CONFIRMED -> ACKNOWLEDGED -> UNDER_REPAIR -> VERIFYING ->
 | --- | --- |
 | `NORMAL → SUSPECTED` | A measurement abnormality is observed. |
 | `SUSPECTED → CONFIRMED` | Confirmation criteria are met. |
-| `SUSPECTED → NORMAL` | Evidence clears before confirmation; no confirmed fault is retained. |
+| `SUSPECTED → NORMAL` | Evidence clears before confirmation, or the condition is replaced by a different fault category/classification; no confirmed fault is retained and the retired record stays in the fault history. |
 | `CONFIRMED → ACKNOWLEDGED` | An authorized actor acknowledges. |
 | `ACKNOWLEDGED → UNDER_REPAIR` | Repair starts. |
 | `UNDER_REPAIR → VERIFYING` | Repair is reported complete. |

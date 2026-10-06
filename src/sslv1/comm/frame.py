@@ -56,11 +56,14 @@ def code_for(message_type: MessageType) -> int:
 
 
 def message_type_for_code(code: int) -> MessageType:
-    """Return the message type for a wire code."""
-    try:
-        return _MESSAGE_TYPES[code]
-    except IndexError:
+    """Return the message type for a wire code.
+
+    The bounds are checked explicitly so that a negative code is rejected
+    rather than selecting a message type from the end of the enum.
+    """
+    if not 0 <= code < len(_MESSAGE_TYPES):
         raise ProtocolError("unknown message type code %d" % code)
+    return _MESSAGE_TYPES[code]
 
 
 @dataclass(frozen=True)

@@ -1122,6 +1122,7 @@ class LampNode(BusEndpoint):
                 EventSeverity.ERROR,
             ),
             "FAULT_CLOSED": (EventType.FAULT_CLOSED, EventSeverity.INFO),
+            "FAULT_CLEARED": (EventType.FAULT_CLEARED, EventSeverity.INFO),
         }
         event_type, severity = mapping.get(kind, (EventType.FAULT_SUSPECTED, EventSeverity.INFO))
         notification_event = kind in ("FAULT_REMINDER_DUE", "FAULT_ESCALATED", "FAULT_NOTIFIED", "FAULT_NOTIFICATION_FAILED")
