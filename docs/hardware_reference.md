@@ -12,7 +12,7 @@ PCB layout**.
 > requires a decision record and may change the architecture, the requirements
 > or the open items listed in [validation.md](validation.md) section 6.
 
-Sections 2 and 3 list the candidates. Sections 4 to 8 list what is **not**
+Sections 2 and 3 list the candidates. Sections 4 to 9 list what is **not**
 decided yet. Nothing in those sections is a selection, a bill of materials or a
 compliance statement; datasheet figures are quoted as evidence about a
 *component* — to show that a candidate is plausible for the intended function,
@@ -982,6 +982,11 @@ hazardous side, and what the PCB must separate — but the class question
 analysis is **coupled** to A-30, not a resolution of it, and it must not be read
 as closing either the boundary or the class.
 
+These two options are compared criterion by criterion in section 9, which
+records a **preliminary preferred direction** (option A). That direction is not
+a decision: it freezes no component and no interface, it does not close A-30,
+and it carries the closure checks and fallback conditions listed in section 9.11.
+
 ### 8.10 Power-tree implications (tightening section 7.7)
 
 CALCULATED: the front end itself is a small load — 3.3 V × 7 mA = 23 mW typical,
@@ -1042,9 +1047,9 @@ rail figure changes.
 | Voltage divider | "divider / isolation arrangement" | **OPEN** | Needs full scale, working voltage, protection concept and the option A/B decision |
 | Voltage-sense protection | none recorded | **OPEN** | Follows from the divider and the input protection concept |
 | Current-sense protection | "with burden and protection" | **OPEN** | Open-secondary and transient protection not specified |
-| ADE7953 placement | undecided (option A or B) | **OPEN — BLOCKED BY A-30** | The decisive input for the whole chain; section 8.9 |
-| Isolation architecture | undecided | **OPEN — BLOCKED BY A-30** | Follows from placement; isolator channel budget interacts with the interface choice |
-| Host interface (SPI/I²C/UART) | not chosen | **OPEN** | SPI fits the 4-channel isolator exactly but leaves no IRQ channel; I²C needs a bidirectional isolator |
+| ADE7953 placement | mains-referenced island (option A) — **preliminary preferred direction** | **OPEN as a decision — BLOCKED BY A-30** | Compared with option B in section 9; the direction freezes no component and the island's construction still needs the A-30 distances |
+| Isolation architecture | one reinforced-capable iso-power barrier carrying the host interface and the island supply — **preliminary preferred direction** | **OPEN as a decision — BLOCKED BY A-30** | Section 9.7 and 9.11; the barrier component's certification status is unconfirmed and its isolated output must still be shown to meet the metering IC's supply requirements |
+| Host interface (SPI/I²C/UART) | SPI with polled status/registers — **practical default, not frozen** | **OPEN as a decision** | SPI fits the 4-channel isolator exactly and IRQ is not required for V1 (section 9.9); I²C would need a bidirectional isolator; UART is two-channel but its register access is unverified |
 | Active power source | ADE7953 provides active power | **CANDIDATE** | Whether the *diagnostic* consumes active or apparent power is the open part (8.5) |
 | Energy source of record | IC integration vs firmware integration vs hybrid | **OPEN** | Firmware owns persistence in all cases; see 8.6 for the dependent items |
 | PF handling | none; the model compares `V x I` | **OPEN** | PF must be derived from P and S; no PF value may be assumed |
@@ -1059,7 +1064,7 @@ Ranked by what blocks what.
 
 | # | Input | Priority | Why |
 | --- | --- | --- | --- |
-| 1 | ADE7953 placement / isolation architecture (option A or B, or a different front end) | **HIGH** | Decides the barrier, the supply arrangement and the component set; blocked by A-30 |
+| 1 | ADE7953 placement / isolation architecture (option A or B, or a different front end) | **HIGH** | Decides the barrier, the supply arrangement and the component set; blocked by A-30. A preliminary direction is recorded in section 9.11 and needs its closure checks (barrier certification, isolated-supply quality, island distances) before it becomes a decision |
 | 2 | Maximum and normal lamp current from the luminaire data (plus LED-driver inrush) | **HIGH** | Sizes ratio, burden, full scale and the over-current headroom |
 | 3 | CT selection and ratio | **HIGH** | Follows from input 2 and the input full scale |
 | 4 | Burden value, tolerance and power rating | **HIGH** | Follows from inputs 2-3; sets the signal at normal load |
@@ -1074,12 +1079,523 @@ Ranked by what blocks what.
 | 13 | Filtering and anti-alias values at both inputs | **MEDIUM** | Accuracy and noise; follows from the IC's bandwidth |
 | 14 | Light-sensor physical placement, window and stray light | **MEDIUM** | Already open in section 6.4; affects the environmental rule |
 | 15 | Analog/digital partitioning and grounding plan | **MEDIUM** | Layout-stage input for metering accuracy |
-| 16 | Host-interface choice and its isolator channel budget | **MEDIUM** | Interacts with the interface (IRQ) and the isolator (section 8.2) |
+| 16 | Host-interface choice and its isolator channel budget | **MEDIUM** | Narrowed in section 9.9: SPI with polled status fits the quad iso-power arrangement and IRQ is not required for V1; the final choice and the SPI timing budget remain open |
 | 17 | Service-calibration details and whether field recalibration is needed | **LOW** | Follows from the accuracy target and the service concept |
 | 18 | Secondary diagnostics: stuck-sensor detection, PF plausibility band | **LOW** | New diagnostic inputs, not needed for a first prototype |
 | 19 | Indicator and support-circuit details around the metering block | **LOW** | Completes the load list |
 
-## 9. Component status summary
+## 9. Metering front-end architecture trade study (A-22, A-30)
+
+Section 8 established that the measurement chain is technically coherent but
+**not placeable**, because the domain of the metering front end is undecided.
+This section compares the two architectures the repository preserves, states the
+requirements each one has to satisfy, and records which should become the
+preferred V1 direction. It is an architecture study: no component is selected,
+no value is frozen, no accuracy figure is invented, and **no safety class is
+declared**. Evidence labels are as in section 6; CALCULATED marks arithmetic
+with its inputs stated. The option names A and B are the ones already used in
+section 8.9.
+
+**What this section does not do.** It does not close A-30, does not select the
+isolator, the ADE7953, the current sensor or the voltage-sensing part, does not
+freeze the host interface, and does not create a decision record (`D-023` still
+governs: every component named here is a candidate). The outcome is recorded as
+a **preliminary preferred direction**, not as a frozen decision, because A-30
+and the product inputs listed in sections 6.7, 7.8 and 8.13 are still open.
+
+### 9.1 The option space as it actually stands
+
+| | Option A | Option B |
+| --- | --- | --- |
+| Domain of the metering device | Mains-referenced island (AGND at N in the conventional configuration) | SELV side, same reference as the MCU |
+| Current sensing | CT with burden inside the island (a shunt is equally possible, because the sensor no longer has to provide isolation) | CT, whose primary-to-secondary insulation is part of the safety barrier |
+| Voltage sensing | Resistive divider chain L to N, inside the island | An isolating voltage element on the mains side: passive magnetic voltage transformer, or active isolated amplifier |
+| Isolation barrier | The digital interface and the island supply across one rated component | The sensing elements themselves, plus the high-side supply path of an active element |
+| Island supply | Required (the metering IC and its crystal live at mains potential) | None for the passive variant; required for the active variant's input side |
+
+Three points fix the option space before the comparison:
+
+* Neither option is disqualified by section 8. The ADE7953 is suitable for
+  engineering monitoring in either domain *(datasheet, section 8.2)*, the sensor
+  classes needed in both exist, and the repository's power and safety analyses
+  contain nothing that rules either one out.
+* **Option B is not one architecture.** Its voltage-isolation element may be a
+  **passive magnetic voltage transformer**, which needs no supply on the mains
+  side, or an **active isolated amplifier**, which does: that device class
+  requires a floating supply on its mains-referenced input side *(datasheet,
+  see 9.3)*. The two variants fail differently and cost differently, so they are
+  compared separately wherever that matters. Neither is selected.
+* The third possibility — a different front end — is kept as an option and is
+  assessed in 9.4.
+
+### 9.2 Option A defined precisely
+
+```text
+ MAINS DOMAIN  (hazardous live; class undecided, A-30 open)
+ L --[ input protection ]--+-----[ relay ]-- switched L --> external luminaire
+                           |                                (returns to N)
+                           |   measured current path
+                           |          |
+                           |       [ CT ]  secondary + burden,
+                           |          |    all inside the island
+                           +--[ divider chain L -> island reference ]
+                                      |
+   +------ metering island, reference = island AGND = N ----------------+
+   |  ADE7953: VP/VN from the divider, IAP/IAN from the CT burden, 3.58  |
+   |  MHz crystal, decoupling, 3.3 V island rail                          |
+   +----------------------------------+-----------------------------------+
+                                      |  SPI: SCLK / MOSI / CS forward,
+                                      |  MISO reverse (4 signals)
+                                      |  island power from the isolator's
+                                      |  integrated isolated DC-DC
+                                      ||
+                                      ||  ONE rated barrier component
+                                      ||  (data + power)
+                                      v
+ SELV DOMAIN (3.3 V)
+   STM32G474RE ---- polled register reads on the measurement cycle
+                    (no IRQ channel required for V1, section 9.9)
+   RS-485 isolation, relay coil driver, storage, RTC, light sensor
+```
+
+| Aspect | Position in option A | Basis / status |
+| --- | --- | --- |
+| Required isolated interface signals | SPI uses four pins — CS, SCLK and MOSI toward the island, MISO back — so a quad-channel isolator is exactly consumed; I²C uses two shared pins (SDA bidirectional, SCL) and UART uses two (Rx, Tx) *(datasheet)* | Channel count is *(inference)*; the interface set and pin sharing are *(datasheet)* |
+| SPI feasibility | Feasible. The ADE7953 is an SPI slave clocked up to 5 MHz *(datasheet)*, so the usable clock is set by the isolator's propagation delay, not by the IC; the timing budget must be derived from both datasheets | Feasible *(datasheet)*; timing budget *(open)* |
+| I²C feasibility | Feasible in principle (100 kHz standard / 400 kHz fast mode *(datasheet)*) but needs a **bidirectional** isolator. An I²C isolator without an integrated DC-DC does not by itself power the island, so the island supply becomes a separate part — i.e. a second barrier element | *(inference)* |
+| UART feasibility | Two channels only, leaving the isolator's channel budget free. Whether the UART path exposes the full register set the diagnostics need must be established from the datasheet, and is not assumed here | Usable in principle *(datasheet)*; register-access equivalence *(open)* |
+| IRQ handling | **Not required for V1** (9.9). Events are not lost without the pin: the IC's power-quality events (overcurrent, overvoltage, peak, sag), no-load and zero-crossing conditions are also readable as status registers, so a polled design can still see them | *(inference)* on the polled cadence; the flag set is *(datasheet)* |
+| Isolated power requirement | The island's load is the metering IC at 23–30 mW (CALCULATED in section 8.10) plus a crystal and housekeeping — negligible against the isolator candidate's integrated isolated output of about 0.5 W | Load *(calculated)*; isolator capability *(datasheet, section 6.5)* |
+| Metering-island power source | The isolator's integrated isolated DC-DC, its output referenced to the island (i.e. to N). If it proves unsuitable, a separate isolated DC-DC is the alternative, at the cost of a second barrier element. Whether the integrated output meets the metering IC's supply tolerance and noise requirements directly, or needs filtering/post-regulation, is not established | *(open)* |
+| Grounding / reference arrangement | AGND is the island's reference; the divider's bottom node and the burden's low node return to it, and the isolated DC-DC's return is the same node, so the analog sense returns and the supply return must be separated locally in the layout. Common-mode constraints on the current channel are naturally satisfied by referencing the burden to AGND | *(inference)* |
+| CT connection | Secondary and burden sit inside the island, referenced to AGND. The CT's primary-to-secondary insulation is a **functional** requirement here, not a safety barrier — this is the structural difference from option B. A shunt is equally admissible, which keeps the current-sensor choice open (section 8.3) | *(inference)* |
+| Voltage-divider reference | The divider is L to N with its bottom node at the island reference. Two consequences are design inputs rather than details: the sense polarity follows the L/N labelling (a reversed installation inverts it), and the island's reference is a mains conductor, so its integrity depends on the neutral connection | *(inference)*; both *(open)* |
+| Service / debug implications | The island must stay inaccessible; the SWD header remains in the SELV domain and must never bridge the barrier; probing the metering block needs isolated/differential instrumentation. One trap to record: the island supply must be **its own** isolated output — reusing the isolated RS-485 port's spare output for it would tie the bus-side reference to a mains-referenced island and bypass the barrier | *(inference)*, consistent with section 6.4 row (E) and section 7.7 |
+| PCB isolation implications | One barrier line, crossed by one wide-body barrier component with datasheet distances; the island's own copper must satisfy the class distances, and the high-impedance sense nodes need their own return away from the relay, the bus pair and the RF path | *(inference, section 8.11)* |
+| A-30 implications | Does not change the class question. It **extends the existing mains-side region** rather than introducing a barrier type the product does not already need (the RS-485 interface already contemplates a reinforced isolator). The island distances, the working voltage and the barrier component's certification remain A-30 inputs | Coupled *(open)* |
+| Thermal implications | The island dissipates roughly 30 mW plus the isolated DC-DC's conversion losses; the divider chain dissipates 53–93 mW at 1 MΩ (CALCULATED, section 8.4). Both are small next to the relay coil and the module, but they set the front end's local temperature and therefore the calibration's thermal stability | *(inference)* |
+| Calibration implications | The IC sits in the same domain as its sensors, which is the configuration the manufacturer's calibration methods describe: one significant phase term (the CT), trimmed in the IC's current-channel phase registers, and gain terms trimmed per node. Calibration requires a mains-voltage reference and a reference load | *(inference, section 8.7)* |
+
+### 9.3 Option B defined precisely
+
+```text
+ MAINS / HAZARDOUS-LIVE SIDE                        SELV SIDE
+ L --[protection]--+---[relay]--- switched L ---> external luminaire
+                   |   measured current path            (returns to N)
+                   |          |
+                   |       [ CT ]--------------------> secondary and
+                   |          |                       burden on the
+                   |          |                       SELV side
+                   +--[divider]--+
+                                 |
+                 (passive)   [ VT ]      (active)  [ isolated amplifier ]
+                                 |                     |
+                                 |        needs a floating high-side supply
+                                 |        referenced to the mains-side node
+                                 |                     |
+        ======================== v =================== v ================
+        ============== the sensing elements' insulation ================
+        ========================== is the barrier ======================
+                                 |
+ SELV DOMAIN (3.3 V)             v
+   ADE7953 on the same rail as the MCU: direct SPI / I2C / UART,
+   IRQ directly available to the MCU, no island, no isolated supply
+   for the metering IC  -->  STM32G474RE
+```
+
+#### 9.3.1 What the voltage-isolation element must provide
+
+Whatever class is chosen, the eventual part has to satisfy this requirement
+set. These are requirements on a class, not a selection:
+
+| # | Requirement | Why |
+| --- | --- | --- |
+| 1 | A safety separation that the product's insulation coordination can use — reinforced-capable in itself, or a construction with two independent layers — at the declared working voltage and impulse withstand | The SELV domain must be separated from mains by double/reinforced insulation **whatever the class** (sections 6.2, 6.7); a single basic-insulation element is not enough for a SELV output |
+| 2 | Ratio scaling from 305 VAC (431 V peak) down to the ADE7953 voltage input, over the whole 90–305 VAC range | Section 5's design target and section 8.4's input range |
+| 3 | A **small, stable, calibratable phase error** in the voltage path, which together with the CT's term stays inside the IC's phase-register range | PF and energy at low PF depend on the relative phase (9.6); the register covers 0.02°/LSB over ±7.66° at 50 Hz and ±9.192° at 60 Hz *(datasheet)* |
+| 4 | Ratio and phase stability over temperature **and over the 3.4:1 excitation range** of the design target, not merely at nominal voltage | A calibration constant is only valid while the error it corrects stays constant |
+| 5 | Continuous mains-side stress capability: the element's primary side is energised for the product's life, and it must not degrade its own insulation under that stress | A sensing element carrying safety duty must stay safe while it ages |
+| 6 | Primary-side protection (fuse/limiting element) coordinated with the input protection concept | Fault current and component failure in the primary path |
+| 7 | Creepage and clearance across the component's own package and pins, to the class requirement | A component whose body spans the barrier must not undermine the PCB barrier |
+| 8 | A **defined failure mode** that the diagnostics can observe: what the sensing path reports when the element degrades, differs or opens | A voltage-sense failure can imitate a supply fault (section 8.8), so the link must not degrade silently |
+| 9 | An output that the ADE7953's voltage channel can actually accept | Its input range and reference are fixed (section 8.2); anything else needs an adaptation network with its own error terms |
+
+The last two requirements are what make option B a sensing-design task rather
+than a part swap, and they are recorded here so a later schematic design cannot
+proceed on a hidden assumption.
+
+#### 9.3.2 The two realisations, and why they are not equivalent
+
+| | Passive variant (voltage transformer) | Active variant (isolated amplifier) |
+| --- | --- | --- |
+| Mains-side supply | **None** — the element is passive, which is its main attraction | **Required**: the class needs a floating high-side supply referenced to the mains-side node. Representative published figures for such a part: 6.0–8.4 mA on the high side where that supply is 3.0–3.6 V (the condition the datasheet publishes for its tighter grade, which also lists a 4.5–5.5 V high-side supply for the other grade) *(datasheet, representative of the class, not a selection)*, i.e. roughly 20–30 mW at 3.3 V, plus that supply's own conversion losses |
+| Barrier elements in the metering path | The CT and the voltage transformer — two | The CT, the isolated amplifier, and the high-side supply's own isolation — three |
+| Magnitude accuracy | Vendor data for the common 2 mA:2 mA class: linearity of order 0.1–0.2%, a claimed 0.2 accuracy class. This is **vendor data, and the sources disagree** (linearity 0.1% vs 0.2%, dielectric 4000 V vs 3000 VAC), so it can support no safety or accuracy argument; the selected part's own datasheet governs | The class is specified precisely: offset error ±9.9 mV max (±1.5 mV on the tighter grade), gain error ±1% max (±0.2% on the tighter grade), nonlinearity 0.04% max, gain drift of order tens of ppm/°C, output bandwidth of hundreds of kHz *(datasheet, representative of the class)* |
+| Phase behaviour | Phase error is specified as a bound at a rated burden (tens of arcminutes for the common class), and it varies with burden, excitation and temperature. Compensation is possible, but the corrected value is load- and excitation-dependent over the 3.4:1 range | Phase contribution at the line frequency is small — the part is not the dominant phase term. The real work is the **output adaptation** to the ADE7953's input (a differential output centred on an internal common-mode, not on the IC's own reference), which adds matched-resistor gain/offset error terms of its own |
+| Failure signalling | Passive: an open winding looks like a missing voltage | The class offers a **missing high-side supply indication** and a defined failsafe output level when the high side is absent *(datasheet)* — useful evidence for section 8.8's requirement |
+| Continuous mains-side dissipation | The primary is fed through a series limiting element that carries the full mains voltage. CALCULATED for a 2 mA-class rated current: about 0.4 W at 230 VAC, an order of magnitude above option A's divider dissipation (53–93 mW, section 8.4). To be recomputed from the selected part's data | A divider chain is still needed to scale the mains into the amplifier's input, with dissipation comparable to option A's chain |
+| Size and sourcing | A sealed magnetic of centimetres-scale footprint, and its insulation construction is the barrier | A wide-body SOIC with a rated barrier (representative class data: reinforced, 5000 V RMS isolation, 1500 V RMS working voltage, at least 8.5 mm creepage/clearance) plus its high-side supply components |
+| Number of parts on the mains side | Two passive elements (CT, VT) plus the limiting element | CT plus the divider, the amplifier and the high-side supply |
+
+The isolated-amplifier figures above also settle a question the option diagram
+raises: the high-side supply could not be borrowed from the existing isolated
+RS-485 port, because that converter's isolated output is referenced to the
+bus-side domain; using it here would tie the bus-side reference to a
+mains-referenced node. Any active variant therefore needs its **own** floating
+supply, and that supply's isolation is part of the barrier.
+
+#### 9.3.3 The remaining aspects
+
+| Aspect | Position in option B | Basis / status |
+| --- | --- | --- |
+| CT suitability | The CT remains suitable and becomes more useful: it is the reason the current path needs no high-side electronics. It must be a **rated barrier component** (or a two-layer construction), the burden moves to the SELV side, and open-secondary protection is still required | *(inference, section 8.3)* |
+| Isolation requirements | The barrier is now constructed from sensing elements rather than bought as one certified part. Its adequacy depends on the selected parts' insulation data, on the PCB distances around them and on the construction — i.e. on inputs that overlap A-30 | *(open)* |
+| PCB implications | Several barrier crossings (the CT's conductor and body, the voltage element's package, the high-side supply if active) instead of one, each with its own keep-out; the active variant also carries a small mains-referenced zone around the amplifier and its supply | *(inference)* |
+| Calibration implications | Two or more sensing elements contribute gain and phase terms, and in the passive variant the phase term moves with burden and excitation. Per-node calibration is mandatory, and its validity depends on the elements' stability (section 8.7) | *(inference)* |
+| Safety implications | Less mains-referenced active circuitry than option A (none in the passive variant), at the price of a barrier whose layers, distances and single-fault behaviour must be engineered and qualified rather than quoted from one certificate. A-30 is not closed by this, and no class is implied | *(inference, A-30 open)* |
+| Service / debug implications | The metering IC and its interface are on the SELV side and can be probed with ordinary instruments; the sensing front end is still mains-referenced and still requires the same care as any primary-side measurement | *(inference)* |
+| Component-count implications | Passive variant: CT, voltage transformer, limiting element, burden, divider — no isolator, no island. Active variant: CT, burden, divider, isolated amplifier, high-side supply, output adaptation network — more parts than option A | *(inference)* |
+| Power / PF implications | PF still comes from the measurement (P/S, section 8.5); the new element adds a phase term to the relative phase (9.6) and, in the active variant, a mains-side supply load (9.8) | *(inference)* |
+
+### 9.4 The third possibility: a different front end
+
+Section 8.1 keeps a different front end as an option, and this study checked
+whether either ADE7953 architecture has a **substantive engineering problem**
+that would force it. Neither does: option A's configuration is the one the
+metrology datasheets document, and option B's difficulties are structural costs
+(barrier construction, an extra phase or supply term), not impossibilities. The
+third option therefore stays an option, not a requirement, and no evaluation of
+a replacement part is performed here.
+
+It is worth recording what that option class looks like, because it is **not a
+way around the domain question**. Metering front ends exist that integrate the
+barrier, and in some families the high-side supply as well — for example an
+isolated three-channel Σ-Δ ADC family whose published data includes an
+integrated isolated DC-DC, a 5 kV-RMS-rated barrier per UL 1577, a wide-body
+package with more than 8 mm clearance and creepage, a 4-wire SPI interface,
+±31.25 mV current channels and ±500 mV voltage channels on a single 3.3 V supply
+*(datasheet, published for that family; that family is not a candidate here and
+is not selected)*. Such a device would make the isolation *invisible* to this
+product's board, but it is still **mains-referenced sensing**: the sensors, the
+divider and the device's first stage remain in the hazardous-live domain, and
+the digital interface emerges on the SELV side. In the terms of this study it is
+a **variant of option A**, with two consequences that keep it out of scope:
+
+* it is an ADC, so the metering arithmetic (RMS, power, PF, energy) moves into
+  the MCU, which changes the energy-source-of-record answer in section 8.6
+  rather than merely the part number; and
+* its current channel suits a low-level sensor such as a shunt, so adopting it
+  would reopen the current-sensor decision (section 4) as well.
+
+Trigger conditions for evaluating it later are recorded in 9.11.
+
+### 9.5 Comparison
+
+The table compares the two architectures criterion by criterion. It is **not a
+score**: no weights and no numbers are assigned, and the "preferred" column is a
+judgement about the engineering evidence for that criterion only. Where the two
+are genuinely equivalent, or where the evidence does not support a preference,
+that is stated rather than forced.
+
+| Criterion | Option A | Option B | Preferred | Reason |
+| --- | --- | --- | --- | --- |
+| Electrical safety (overall) | One rated barrier component; a mains-referenced metering block | Less live circuitry (passive) or a small live bias zone (active); a barrier built from sensing elements | **No preference** | Different trades, not different safety levels; the class and distances are A-30's to fix either way (9.7) |
+| Hazardous-live active circuitry | Metering IC, crystal and island supply at mains potential | Passive: none. Active: the amplifier's high side and its supply | **B** | Less active circuitry at mains potential |
+| Isolation complexity and barrier clarity | One barrier element carrying data and power | Two (passive) or three (active) barrier elements | **A** | One datasheet-defined barrier instead of a construction |
+| New barrier elements introduced | None beyond the digital-isolator class the RS-485 port already contemplates | The sensing elements become safety-barrier elements | **A** | Reuses an existing component class instead of creating a new qualification task |
+| Voltage measurement | Resistive divider in the IC's own reference domain | Passive: a magnetic with load-dependent ratio. Active: a well-specified amplifier, but its output must be adapted to the IC's input | **A (narrow)** | Fewest new error terms; the active variant is close behind on magnitude accuracy |
+| Current measurement | CT or shunt in the island; element insulation functional | CT; element insulation is the barrier | **No preference** | Same sensor class, different duty |
+| Active power | One phase term (CT), corrected in the channel the IC compensates | A second phase term in the voltage path | **A** | Phase structure (9.6) |
+| Apparent power | V_rms × I_rms from the same IC | Same IC, same arithmetic | **No preference** | The domain does not change this quantity |
+| Power factor | PF = P / S; phase structure as the active-power row | Same derivation; a second phase term | **A** | PF is the quantity most exposed to a relative phase error |
+| Energy accumulation | IC registers plus firmware persistence | Same device, same accumulation question | **No preference** | Section 8.6 is independent of the domain |
+| Measurement accuracy (magnitude) | CT, burden, divider, IC — trimmed once per node | Passive: adds the magnetic's ratio error and its variation. Active: adds the amplifier's DC errors and the adaptation network | **A (narrow)** | The calibration path is the documented one; the active variant is comparable but has more terms |
+| Phase error | One dominant term, in a channel the IC calibrates | Passive: a second, load- and excitation-dependent term. Active: a small term plus an adaptation network | **A** | See 9.6 |
+| Calibration | Single domain; one sensor's phase; standard method; a mains reference is needed | Several elements and, in the passive variant, a load-dependent term; the same rig is needed | **A** | Fewer coefficients and less coupling to load and temperature |
+| Host interface to the MCU | Isolated SPI/I²C/UART; with SPI a quad isolator has no channel left for IRQ | Direct, unisolated interface; IRQ available to the MCU | **B** | No channel budget, no propagation delay, interrupt available |
+| Power consumption | IC at 23–30 mW behind the isolator's converter, plus the divider's 53–93 mW on the mains side | Passive: IC at 23–30 mW on the SELV rail, but a continuous mains-side limiting element of order 0.4 W (CALCULATED for the 2 mA class, 9.3.2). Active: IC plus high-side supply (20–30 mW class) and its conversion | **No preference (A ≈ B active); the passive variant is heaviest on the mains side** | Absolute differences are small against a 10 W module whose real limit is derating; what changes is *where* the load lands (9.8) |
+| PCB segregation / barrier geometry | One barrier line through one wide-body component | Several component-level crossings and keep-outs | **A** | Easier to demonstrate, review and inspect |
+| Board area at mains potential | A two-IC island with its own decoupling | Passive: passive elements only. Active: a small amplifier zone | **B** | Smaller hazardous-live footprint |
+| Component count | IC, isolator, crystal, burden, divider | Passive: no isolator or island, but a large magnetic. Active: amplifier, a second isolated supply, adaptation network, on top of A's parts | **A vs the active variant; no preference vs the passive one** | The active variant adds parts to A's list; the passive variant instead trades active parts for magnetics and a load-dependent sensor |
+| Serviceability | Live island; probing needs isolated/differential instruments | Metering electronics are SELV-probeable | **B** | Bench and service safety |
+| Debug access | SWD header is SELV in both; metering debug needs island-safe instruments | Same SWD situation; metering debug directly probeable | **B** | As above |
+| Fault diagnosis | A link failure makes the whole block observably unavailable; sensor failures still imitate other faults | Sensor-level failures are not distinguishable by the MCU; the active variant adds supply failure modes | **No preference** | Section 8.8's multi-evidence obligations are unchanged in both; neither removes the "a divider or sensing failure can imitate a supply fault" problem |
+| Thermal impact | Island ≈30 mW plus converter loss, plus the divider's 53–93 mW | Passive: a mains-side element in the hundreds of milliwatts (9.3.2). Active: divider plus amplifier plus supply | **A (narrow)** | Lower continuous dissipation, but the difference is small at module level |
+| Manufacturability | Conventional metering circuit; one critical barrier part | A large magnetic whose insulation construction carries barrier duty (passive), or several new active parts (active) | **A (narrow)** | Fewer new qualification and assembly items |
+| Cost direction | Cost concentrates in the barrier component with integrated isolated power | Passive: cost concentrates in the magnetics. Active: an amplifier plus a second isolated supply | **OPEN** | No quotations are available; a volume comparison is an input, not an estimate to invent |
+| Scalability | The island is a self-contained block; the isolator/interface variant can change locally | The front end is coupled to the sensor and barrier construction | **A (narrow)** | Block separation makes later changes more local |
+| Minewing prototype practicality | Mains-referenced island needs bench discipline (isolated supply, differential probing) but adds no new sensing-characterisation task | Passive: bench-friendly electronics, but the voltage element's ratio and phase over load, excitation and temperature must be characterised. Active: additionally a floating supply and an adaptation network to design and verify | **A (narrow, and split)** | The bench discipline is required for this product anyway; the new unknowns are fewer |
+| Future production practicality | One barrier component to keep certified; the island construction is fixed by layout | Several sensing parts whose insulation data and consistency carry the barrier; the passive variant adds magnetic batch consistency | **A (narrow)** | Fewer safety-critical part qualifications to control |
+
+The deciding rows are the structural ones — barrier clarity, new barrier
+elements, active-power and PF phase structure, calibration, PCB segregation and
+component count — not the number of rows that happen to favour one option. The
+rows where B is preferred (live-circuitry volume, interface simplicity,
+serviceability) are real advantages and are the reasons B remains the fallback
+rather than being discarded.
+
+### 9.6 Phase error, PF and energy
+
+The product needs active power, energy and PF, and PF must come from the
+measurement (P/S), never from an assumed value (section 8.5). For a load whose
+PF is below unity the relative phase between the voltage and current paths is
+therefore a first-order error term, not a detail: a fixed phase error `Δφ`
+produces a power error of roughly `tan(φ) × Δφ`, so at PF 0.5 a 1° error is
+already about a 3% power error (CALCULATED, section 8.7).
+
+The IC's own contribution is small: the manufacturer specifies the phase
+matching between its current and voltage channels as within ±0.05° from 45 Hz to
+65 Hz *(datasheet)*. The sensing elements dominate, and the two options differ
+in how many of them there are:
+
+* **Option A.** The current path contributes one significant term. The
+  manufacturer states that a phase error of 0.1° to 0.3° is not uncommon for a
+  current transformer, that it varies from part to part, that it must be
+  corrected for accurate power readings and that it is particularly noticeable
+  at low power factor *(datasheet)*. The device corrects exactly this, in the
+  current channel, with a 10-bit sign-magnitude phase register whose LSB is
+  1.117 µs of delay or advance — 0.02°/LSB at 50 Hz over a total of ±7.66°, and
+  0.024°/LSB at 60 Hz over ±9.192° *(datasheet)*. The voltage path is a
+  resistive divider, whose phase contribution at the line frequency is
+  negligible compared with the CT's; the anti-alias filter adds a small term
+  that forms part of the same compensation. The device also provides an
+  angle/time-delay measurement register pair for the current-to-voltage delay
+  *(datasheet)*, which is the calibration aid for this term. In short: one
+  dominant, measurable, IC-compensable phase term.
+* **Option B, passive variant.** A second phase term appears in the voltage
+  path. Class data bounds it in the tens of arcminutes at a rated burden — the
+  same order as a CT's — but it is specified at a burden and varies with
+  burden, excitation and temperature. The relative phase therefore becomes a
+  two-element, load-dependent quantity: a single calibrated constant is only as
+  valid as the stability behind it, and the combined terms must still fit the
+  IC's compensation range.
+* **Option B, active variant.** The amplifier's phase contribution at the line
+  frequency is small, because its output bandwidth is in the hundreds of kHz
+  *(datasheet, representative of the class)* — it is not the phase problem. Its
+  DC errors and, more importantly, the **output adaptation network** are: the
+  amplifier's differential output is centred on its own internal common-mode
+  voltage, not on the ADE7953's reference, so it has to be level-shifted and
+  scaled, and that network's matched resistors add gain, offset and temperature
+  terms that must be calibrated and kept stable.
+
+Two cautions belong with this analysis. First, phase compensation is a **time
+shift**, and the manufacturer's own documentation for that technique (quoted for
+a related ADE device, same mechanism) warns that large phase errors corrected
+this way can introduce errors at higher harmonics — the correction is exact at
+the fundamental. The sensing element should therefore keep its residual phase
+error small rather than have a large error calibrated away; that is an input to
+the CT selection and, in option B, to the voltage-element selection. Second,
+nothing here assumes a PF: PF is measured, and the accuracy target stays **OPEN**
+(no number is invented). What can be said is structural: option A keeps the
+relative phase a single term that the device was designed to correct, while
+option B either makes it load-dependent or adds an adaptation network whose
+stability becomes part of the accuracy argument.
+
+### 9.7 Safety and isolation, cross-checked against A-30
+
+Neither option closes A-30, neither declares a class, and neither fixes a
+creepage/clearance value. What they change is **where the boundary runs and what
+it is made of**, and that is what this section compares. The class-agnostic
+requirement from section 6.7 applies to both: the SELV domain must be separated
+from mains by double or reinforced insulation whatever the class turns out to
+be, so the barrier has to be reinforced-capable in either architecture.
+
+| Question | Option A | Option B |
+| --- | --- | --- |
+| What the barrier is | One component: a reinforced digital isolator with an integrated isolated DC-DC, whose barrier carries data and power. The candidate's published data gives reinforced classification with defined creepage/clearance, working voltage and surge ratings — while its certification status must still be confirmed with the manufacturer (section 6.5) | A construction: the CT's insulation plus the voltage element's insulation, plus the high-side supply's isolation in the active variant. For typical parts of these classes the published data gives withstand voltages, not insulation classes, and the sources found disagree with each other (9.3.2) — so reinforced-capable parts, or a two-layer construction, must be found or created |
+| Single-fault behaviour | The barrier is a solid-state component rated for its working voltage and surge; its failure modes are the component's, and the island's inaccessibility is a mechanical/enclosure requirement | Must be analysed element by element: the repo already records "single-fault integrity of the barrier-spanning voltage element" as option B's main open risk (section 8.9), and the same question now applies to the CT and the bias supply |
+| Mains-referenced active circuitry | Present: the metering IC and its supply | Passive variant: none. Active variant: the amplifier's high side and its floating supply |
+| Isolation crossings | One | Two or three |
+| PCB segregation | One barrier line, crossed by one wide-body part with datasheet geometry | Several component-level crossings, each with its own keep-out and distances |
+| Service / debug | The island must be inaccessible; probing it requires isolated/differential instruments; the debug header stays SELV | The metering electronics are SELV-probeable with ordinary instruments; the sensing front end is still mains-referenced |
+| Coupling to A-30 | The barrier is a component rating, independent of the enclosure; the island still needs the class's distances and an inaccessible construction | The barrier's adequacy depends on the parts chosen and on the enclosure/class decisions — the coupling is tighter |
+
+**Which option wins which safety question.** Least hazardous-live active
+circuitry: **B**. Fewest isolation crossings: **A**. Safer service and debug:
+**B** for the metering electronics. Simplest PCB segregation: **A**. Fewest
+ambiguous safety boundaries: **A**.
+
+**The actual trade-off, stated plainly.** Option A is not preferred because it
+"looks safer" — it puts *more* electronics at mains potential, and that has real
+consequences for bench work and service. It is preferred on boundary clarity
+because its barrier is a single component with published ratings and a
+certification path, of the same class the RS-485 interface already needs, while
+option B asks the product to *construct* a barrier out of sensing elements whose
+insulation data are weaker and whose single-fault behaviour has to be argued
+from scratch — and, in the active variant, to do that while also adding a third
+barrier element and a residual mains-referenced bias island. The remaining A-30
+inputs (working voltage, overvoltage category, pollution degree, altitude,
+enclosure, installation) are still prerequisites for either option, and no
+distance, class, PE treatment or certification is recorded here.
+
+### 9.8 Power cross-check against section 7
+
+The comparison is relative, not a new budget; no current value is invented. What
+each option changes is **where** the metering load lands.
+
+* **Option A.** The island carries the metering IC's 23–30 mW and the local
+  dissipation of its supply conversion, but the *input power* of that conversion
+  comes from the SELV 3.3 V rail through the isolator. Section 7's 3.3 V load
+  list therefore gains the isolator's input current rather than the IC's 7 mA
+  directly, which makes the SELV-side figure **larger** than 30 mW by the
+  converter's conversion loss. This refines section 8.10 rather than
+  contradicting it: what stays in the island is the load, but the energy is paid
+  for on the SELV rail. The two unknown values are the isolator's input current
+  at this load and the converter's light-load efficiency; neither is in the
+  repository *(open)*. If the island were instead fed from a mains-referenced
+  supply, the loss would land on the mains side, but that route brings its own
+  standby, leakage and safety questions and is not the candidate path here.
+* **Option B, passive variant.** The metering IC's 23–30 mW sits on the 3.3 V
+  rail exactly as section 7.3 assumed. The voltage transformer's primary path is
+  a continuous mains-side load: the series limiting element carries the mains
+  voltage, and for the class's 2 mA rated current that is about 0.4 W at 230 VAC
+  (CALCULATED, 9.3.2 — to be recomputed from the selected part). It does not
+  consume the AC/DC module's 10 W budget, but it is a continuous load inside the
+  enclosure and an input-protection sizing item.
+* **Option B, active variant.** The IC's 23–30 mW is on the 3.3 V rail, plus the
+  amplifier's low-side supply *(open)*, plus its high-side supply — the
+  representative class figure is 20–30 mW *(datasheet)*, whose own conversion
+  losses land on whichever domain feeds it — plus the divider chain that scales
+  the mains into the amplifier's input, which dissipates comparably to option A's
+  chain. The adaptation network is negligible.
+
+The absolute differences are tens to a few hundred milliwatts, against a 10 W
+module whose real constraint is high-ambient derating (section 7.5) and a
+Group-Controller side where the cellular burst dominates. None of the three
+variants threatens the power tree, and section 7's conclusion that the budget
+**cannot be closed** is unchanged. What the comparison supplies is the item
+section 7.7 and 8.10 were missing: the metering arrangement's load, its domain
+and its direction of flow.
+
+### 9.9 Host interface and the IRQ question
+
+| Interface | Signals across the barrier | Cost / consequence | V1 suitability |
+| --- | --- | --- | --- |
+| SPI | CS, SCLK, MOSI toward the island, MISO back = **4** | Consumes a quad isolator's whole channel budget, so no IRQ channel is left. Usable clock set by the isolator's propagation delay rather than the IC's 5 MHz maximum *(datasheet)*, so the timing budget must be derived from both datasheets *(open)* | **Suitable** for a polled design; the practical default for the quad iso-power arrangement |
+| I²C | SDA (bidirectional) and SCL = **2** | Leaves channels free, but needs a bidirectional isolator. If that isolator has no integrated DC-DC, the island supply becomes a separate part — a second barrier element | Suitable in principle (100 kHz / 400 kHz, *(datasheet)*) |
+| UART | Rx and Tx = **2** | Same channel benefit as I²C. Whether this path exposes the full register set the diagnostics need is a datasheet/interface input, not assumed *(open)* | Suitable in principle |
+| IRQ (either as a pin or as an event source) | One additional channel if routed | Not required for V1 — see below | **Not required**; the events remain readable as status registers |
+
+**Why IRQ is not mandatory for V1.** (1) The measurement and reporting cadences
+are configured and polled (`PR-MEASURE-002`), so the MCU already owns the timing.
+(2) The diagnostic evidence is per-interval values combined over configured
+confirmation windows (`D-012`), not edges. (3) The information behind the pin is
+not lost without it: the device's overcurrent, overvoltage, peak, sag, no-load
+and zero-crossing conditions are readable as status/event registers over
+whichever interface is used *(datasheet)* — only the immediate interrupt delivery
+is given up. (4) No protective function exists in V1 (`D-008`: no protective
+shutdown is defined), so no sub-cycle response is required by the current
+requirements. Any additional island-side control signal (for example a chip
+reset) must either be generated on the island or budgeted as a channel *(open)*.
+
+**Condition.** If a future requirement introduces a protective action or a
+sub-cycle response, IRQ (or a zero-crossing output) becomes a real
+channel-budget requirement and the isolator/interface choice must be replanned.
+That is recorded as a trigger, not as a hidden assumption.
+
+### 9.10 Decision criteria
+
+| # | Criterion (from the task's decision list) | Option A | Option B | Reason |
+| --- | --- | --- | --- | --- |
+| 1 | Safe and defensible architecture | **Met**, with a single rated barrier and a mains-referenced island | **Met differently**, with less live circuitry and a constructed barrier | Both are defensible; A is clearer to demonstrate (9.7) |
+| 2 | Compatible with the 90–305 VAC target | **Met** — divider chain and CT, per section 8.4 | **Met in principle**; the voltage element's ratio and phase must hold over the 3.4:1 range | A's scaling path is the documented one |
+| 3 | Supports voltage, current, power, PF and energy | **Met** — all quantities from the IC, PF derived from P and S | **Met**, with an extra phase term in the voltage path | Phase structure (9.6) |
+| 4 | Supports multi-evidence fault diagnosis | **Met** — the same evidence set; the link's health is one observable block | **Met** — the same evidence set | Neither removes the need for validity signals (9.5, fault-diagnosis row) |
+| 5 | No billing-grade accuracy required | **Met** — monitoring values only; no class claimed | **Met** — same | `D-029`, `PR-MEASURE-005` |
+| 6 | Realistically manufacturable | **Met** — conventional circuit, one barrier part | **Met with more new items** — a construction-dependent barrier, or extra active parts | A has fewer new qualification and assembly items (9.5) |
+| 7 | Practical for Minewing to prototype | **Met**, with bench discipline for the live island | **Bench-friendly electronics**, but new characterisation work | Split: A is fewer unknowns overall; B is easier to probe (9.5) |
+| 8 | No unnecessary complexity | **Met** — the IC in its conventional configuration plus one isolator | **Higher complexity** — VT plus limiting element, or amplifier plus a second isolated supply and an adaptation network | A adds the fewest new elements |
+| 9 | Clear isolation boundary | **Met** — one barrier line, one component | **Less clear** — several crossings whose adequacy depends on parts and construction | 9.7 |
+| 10 | Allows detailed schematic design without hidden assumptions | **Met, with a named closure list** (9.11) | **Met, with a longer list** — the voltage element's class, the bias supply's derivation, the adaptation network | A's open items are fewer and better bounded |
+
+Criteria 2 and 5 are satisfied by both. Criterion 7 is genuinely split. The
+remaining criteria favour A, but for structural reasons (barrier definition,
+phase structure, number of new elements, absence of hidden assumptions) rather
+than because A is "safer" or cheaper — the cost direction is **OPEN** for both.
+
+### 9.11 Preliminary preferred direction
+
+**PRELIMINARY PREFERRED DIRECTION — Option A: a mains-referenced ADE7953
+metering island, with the host interface and the island supply crossing one
+reinforced-capable iso-power barrier, and a polled interface (SPI the practical
+default, no IRQ channel required for V1).**
+
+This is a direction, not a decision: no component is selected, no interface is
+frozen, and no D-number is created. It is recorded as preliminary because A-30
+and the product inputs remain open, and because the closure checks below have
+not been performed.
+
+**Why A.** Four structural reasons, in order of weight: (1) it keeps the
+isolation boundary as **one rated component of a class the product already
+needs**, instead of a barrier constructed from sensing elements whose insulation
+classes are not published as such; (2) it keeps the voltage path a resistive
+divider, so the relative V/I phase stays a **single CT term that the device is
+designed to measure and correct** — the criterion the PF and low-PF energy
+requirements are most sensitive to; (3) it adds the **fewest new parts and new
+engineering unknowns** (no voltage transformer, no isolated amplifier, no
+floating high-side supply, no output-adaptation network); and (4) its interface
+and power are already bounded by evidence in this repository — a four-signal SPI
+fits the quad iso-power isolator candidate exactly, and the island's ~30 mW fits
+that candidate's isolated output by a wide margin.
+
+**Closure checks before this becomes a decision.**
+
+1. The barrier component is available with **confirmed** reinforced
+   certification and a working voltage/surge rating that suits the declared
+   working voltage (section 6.5 records the candidate's certification status as
+   unconfirmed).
+2. The isolator's integrated isolated supply meets the metering IC's supply
+   tolerance and noise requirements directly — or the design accepts a
+   post-regulator, which must be counted as an island part and as a thermal item.
+3. The island's construction and distances satisfy the class distances that
+   A-30 fixes, including around the divider, the burden and the crystal.
+4. The SPI timing budget is derived from the IC's timing and the isolator's
+   propagation delay.
+5. The polling cadence covers the IC's energy-register behaviour (roll-over),
+   which together with the maximum measurable power sizes the read interval.
+6. The island's presence does not conflict with the enclosure, installation or
+   thermal concept.
+
+**Conditions that would move the recommendation to option B.** If the required
+mains-referenced distances cannot be realised in the enclosure; if no
+iso-power barrier is obtainable with confirmed reinforced certification and
+adequate isolated-output quality; if the product concept forbids active
+mains-referenced electronics beyond the existing module; or if safe access to
+the metering electronics during build and service is made a hard requirement.
+In those cases the **passive** variant is the more attractive part of option B
+(no live bias island), accepting a load-dependent phase term and a continuous
+mains-side dissipation, while the **active** variant keeps the phase and
+magnitude performance but needs its own floating supply, a third barrier element
+and an adaptation network.
+
+**Conditions that would reopen the third option** (a different front end,
+section 9.4): if the interface cannot be isolated within the available channel
+and power budget; if the island's switching supply proves incompatible with the
+accuracy target after mitigation; if the current sensor changes class for other
+reasons; or if a later accuracy requirement makes the MCU-side arithmetic
+(and therefore an isolated-ADC front end) the better fit.
+
+### 9.12 What remains blocking
+
+The ranked input list in section 8.13 remains the master list; this study
+changes two of its entries and confirms the rest.
+
+| Item | Status after this study |
+| --- | --- |
+| Front-end placement (section 8.13 input 1) | Direction identified (9.11), still **OPEN** as a decision and still **coupled to A-30** |
+| Host interface and isolator channel budget (input 16) | **Narrowed**: SPI with polled status fits the quad iso-power arrangement; IRQ is not required for V1 (9.9). The final interface and isolator variant remain OPEN |
+| All other inputs (current data, CT ratio/burden, divider values, accuracy target, energy source of record, PF definition, calibration, protection, filtering) | Unchanged and still open |
+
+Additional items this study raises, all **OPEN**: the isolator's input current
+and light-load efficiency at the metering load; the isolation barrier's
+certification confirmation; the island's supply quality against the metering
+IC's tolerance; the polling cadence against the energy-register behaviour; and
+the cost comparison, which needs quotations rather than estimates.
+
+No class, distance, PE treatment, component selection or accuracy figure is
+recorded by this section, and A-30 remains exactly where section 6 left it.
+
+## 10. Component status summary
 
 | Item | Status |
 | --- | --- |
@@ -1091,9 +1607,9 @@ Ranked by what blocks what.
 | Component qualification | Not started |
 | Safety class and isolation boundary (A-30) | **Undecided** — preliminary analysis in section 6; still gates schematic capture |
 | Power-tree budget | **Not closed** — preliminary analysis, load tables and the prioritised closure list are in section 7; no margin is claimed |
-| Measurement-chain design | **Not frozen** — analysis and ranked inputs are in section 8; the front-end placement is coupled to A-30 |
+| Measurement-chain design | **Not frozen** — analysis and ranked inputs are in section 8; the architecture comparison and the preliminary preferred direction (option A, one iso-power barrier, polled interface) are in section 9; still coupled to A-30 |
 
-## 10. Validation items deferred to hardware
+## 11. Validation items deferred to hardware
 
 | Item | Deferred to |
 | --- | --- |
@@ -1108,7 +1624,7 @@ Ranked by what blocks what.
 | Certification | Accredited testing |
 | RTC backup retention and accuracy | Physical measurement |
 
-## 11. Related documents
+## 12. Related documents
 
 * [architecture.md](architecture.md) — where these functions sit in the system.
 * [validation.md](validation.md) — open engineering items and the digital/physical boundary.
