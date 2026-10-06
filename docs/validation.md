@@ -154,7 +154,7 @@ implemented or simulated.
 | A-19 | Operator identity and authentication mechanism. | Security design. |
 | A-20 | Identifier assignment process for sites, groups and lamps. | Deploying organisation. |
 | A-21 | Environmental sensor set behind the `ENVIRONMENTAL` fault category. | Product scope. |
-| A-22 | Measurement front-end adequacy for the intended monitoring function. | Hardware selection and calibration. |
+| A-22 | Measurement front-end adequacy for the intended monitoring function. **Still open**: the chain reconstruction, the front-end assessment, the CT/burden and divider relationships, the power/PF, energy-source, calibration and fault-evidence analyses are in [hardware_reference.md](hardware_reference.md) section 8, with the ranked inputs. | Hardware selection, the A-30 placement decision and calibration. |
 | A-24 | Operator interface: no graphical user interface is implemented; the control layer is a logical/data layer. | Product scope decision. |
 | A-26 | Physical RTC backup duration. | Hardware validation campaign. |
 | A-27 | Detailed production permission matrix. | Security design. |
@@ -200,11 +200,12 @@ absorbed into the current rule:
   For an AC load that arithmetic is apparent power, while a real meter reports
   active power, so the two differ by the power factor of the lamp and driver.
   The rule is therefore only sound for a unity-power-factor front end. The
-  metering chain selected in Phase 19 — an ADE7953-class candidate with both
-  active and apparent power registers, see
-  [hardware_reference.md](hardware_reference.md) — resolves which quantity the
-  diagnostic compares; until then the tolerance is left unchanged rather than
-  widened or given an assumed power factor.
+  metering chain for the physical prototype — an ADE7953-class candidate with
+  both active and apparent power registers, see
+  [hardware_reference.md](hardware_reference.md) section 8.5 — resolves which
+  quantity the diagnostic compares, and the power factor must come from the
+  measurement chain rather than from an assumed value; until then the tolerance
+  is left unchanged rather than widened or given an assumed power factor.
 
 The hardware-side inputs that these items feed are listed in
 [hardware_reference.md](hardware_reference.md). The power-tree side of the same
